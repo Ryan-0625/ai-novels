@@ -46,7 +46,7 @@ class OllamaClient(BaseLLMClient, EmbeddingClient):
         except ImportError:
             raise ImportError("Please install ollama: pip install ollama")
 
-        self._model = config.get("model", "qwen2.5-14b")
+        self._model = config.get("model", "qwen2.5-7b")
         self._temperature = config.get("temperature", 0.7)
         self._max_tokens = config.get("max_tokens", 8192)
 

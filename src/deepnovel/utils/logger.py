@@ -295,6 +295,27 @@ class HierarchicalLogger:
                  duration_ms=duration_ms,
                  **kwargs)
 
+    # 通用日志级别方法（兼容标准 logging API）
+    def debug(self, message: str, **kwargs):
+        """通用 DEBUG 日志"""
+        self._log('SYSTEM', 'DEBUG', message, **kwargs)
+
+    def info(self, message: str, **kwargs):
+        """通用 INFO 日志"""
+        self._log('SYSTEM', 'INFO', message, **kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """通用 WARNING 日志"""
+        self._log('SYSTEM', 'WARNING', message, **kwargs)
+
+    def error(self, message: str, **kwargs):
+        """通用 ERROR 日志"""
+        self._log('SYSTEM', 'ERROR', message, **kwargs)
+
+    def critical(self, message: str, **kwargs):
+        """通用 CRITICAL 日志"""
+        self._log('SYSTEM', 'CRITICAL', message, **kwargs)
+
     def agent_exec_start(self, agent_name: str, task_id: str, **kwargs):
         """Agent执行开始日志"""
         LogContext.set('task_id', task_id)

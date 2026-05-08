@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from jsonschema import validate, ValidationError, Draft7Validator
 import yaml
 
-from src.deepnovel.utils import log_error
+from deepnovel.utils import log_error
 
 
 class ConfigValidator:

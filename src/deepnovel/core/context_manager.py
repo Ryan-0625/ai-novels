@@ -19,7 +19,7 @@ from collections import OrderedDict
 import threading
 import copy
 
-from src.deepnovel.utils import log_info, log_error, log_warn, get_logger
+from deepnovel.utils import log_info, log_error, log_warn, get_logger
 
 
 class ContextScope(Enum):

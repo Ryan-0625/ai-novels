@@ -107,13 +107,17 @@ class RocketMQConsumer(BaseConsumer):
     """
     RocketMQ消息消费者实现
 
-    自动检测运行环境：
-    - 真实环境：使用rocketmq-client-python连接真实的RocketMQ服务器
-    - 测试环境：使用Mock实现（当rocketmq-client-python不可用时）
+    需要 rocketmq-client-python 库，否则抛出 ImportError。
     """
 
     def __init__(self, config: ConsumerConfig = None, **kwargs):
         """初始化消费者"""
+        if not _ROCKETMQ_AVAILABLE:
+            raise ImportError(
+                "rocketmq-client-python is not available. "
+                "Install it with: pip install rocketmq-client-python"
+            )
+
         if config is None:
             if kwargs:
                 config = ConsumerConfig.from_config(kwargs)
@@ -123,25 +127,19 @@ class RocketMQConsumer(BaseConsumer):
         self._consumer: Optional[Any] = None
         self._handlers: Dict[str, List[MessageHandler]] = {}
         self._running = False
-        self._is_mock = not _ROCKETMQ_AVAILABLE
         self._is_connected = False
 
         self._logger = get_logger()
         self._logger.messaging("RocketMQ Consumer initializing",
-                              mode="mock" if self._is_mock else "real",
                               topic=self._config.topic,
                               group=self._config.consumer_group)
 
-        if not self._is_mock:
-            self._init_real_consumer()
+        self._init_consumer()
 
-    def _init_real_consumer(self):
-        """初始化真实的RocketMQ消费者"""
+    def _init_consumer(self):
+        """初始化RocketMQ消费者"""
         try:
-            # 使用PushConsumer用于订阅模式
-            self._consumer = rocketmq.PushConsumer(
-                self._config.consumer_group
-            )
+            self._consumer = rocketmq.PushConsumer(self._config.consumer_group)
             self._consumer.set_name_server_address(self._config.name_server)
             self._consumer.set_thread_count(self._config.max_concurrency)
             self._consumer.set_batch_size(self._config.batch_size)
@@ -153,29 +151,23 @@ class RocketMQConsumer(BaseConsumer):
                     "Default"
                 )
 
-            # 订阅主题
             self._consumer.subscribe(self._config.topic, self._config.tags, self._on_message)
             self._is_connected = True
-            self._logger.messaging("RocketMQ Consumer connected to real server",
+            self._logger.messaging("RocketMQ Consumer initialized",
                                   topic=self._config.topic,
                                   group=self._config.consumer_group)
         except Exception as e:
-            self._logger.messaging_error("Failed to connect to real RocketMQ consumer", error=str(e))
-            self._logger.messaging("Using mock consumer instead")
-            self._is_mock = True
-            self._consumer = None
+            self._logger.messaging_error("Failed to initialize RocketMQ Consumer", error=str(e))
+            raise
 
     def _on_message(self, msg: Any) -> int:
         """处理收到的消息"""
         try:
             body = msg.body if hasattr(msg, 'body') else str(msg)
             message = __import__('json').loads(body)
-            self._logger.messaging_debug("Received message", topic=msg.topic, keys=msg.keys)
 
-            # 通知所有处理器
             topics = [msg.topic] if hasattr(msg, 'topic') else []
             notified = False
-
             for topic in topics:
                 if topic in self._handlers:
                     for handler in self._handlers[topic]:
@@ -184,26 +176,17 @@ class RocketMQConsumer(BaseConsumer):
                             notified = True
                         except Exception as e:
                             self._logger.messaging_error("Handler error", topic=topic, error=str(e))
-
-            return 0 if notified else -1  # 0表示成功消费
+            return 0 if notified else -1
         except Exception as e:
             self._logger.messaging_error("Message processing error", error=str(e))
             return -1
 
     def connect(self) -> bool:
         """建立连接"""
-        if self._is_mock:
-            self._is_connected = True
-            self._logger.messaging_debug("Mock RocketMQ Consumer connecting")
-            self._logger.messaging("Mock RocketMQ Consumer connected")
-            return True
-
         if self._consumer is None:
             return False
-
         try:
             self._is_connected = True
-            self._logger.messaging("RocketMQ Consumer connected")
             return True
         except Exception as e:
             self._logger.messaging_error("Failed to connect RocketMQ Consumer", error=str(e))
@@ -212,43 +195,22 @@ class RocketMQConsumer(BaseConsumer):
 
     def disconnect(self) -> bool:
         """断开连接"""
-        if self._is_mock:
-            self._is_connected = False
-            return True
-
         if self._consumer is not None:
             try:
                 self._consumer.shutdown()
             except Exception as e:
                 self._logger.messaging_error("Failed to shutdown RocketMQ Consumer", error=str(e))
-
         self._is_connected = False
         return True
 
     def is_connected(self) -> bool:
-        """检查是否已连接"""
         return getattr(self, '_is_connected', False)
 
     def health_check(self) -> dict:
-        """健康检查"""
         handler_count = sum(len(h) for h in self._handlers.values())
-
-        if self._is_mock:
-            return {
-                "status": "healthy" if self.is_connected() else "unhealthy",
-                "latency_ms": 0,
-                "mode": "mock",
-                "details": {
-                    "consumer_group": self._config.consumer_group,
-                    "handler_count": handler_count,
-                    "is_running": self._running
-                }
-            }
-
         return {
             "status": "healthy" if self.is_connected() else "unhealthy",
             "latency_ms": 0,
-            "mode": "real",
             "details": {
                 "consumer_group": self._config.consumer_group,
                 "topic": self._config.topic,
@@ -258,57 +220,37 @@ class RocketMQConsumer(BaseConsumer):
         }
 
     def subscribe(self, handler: MessageHandler) -> bool:
-        """订阅消息处理器"""
         topics = handler.get_topics()
         for topic in topics:
             if topic not in self._handlers:
                 self._handlers[topic] = []
             if handler not in self._handlers[topic]:
                 self._handlers[topic].append(handler)
-
-        # 如果是真实消费者，重新订阅
-        if not self._is_mock and self._consumer is not None:
+        if self._consumer is not None:
             try:
                 for topic in topics:
                     self._consumer.subscribe(topic, "*", self._on_message)
             except Exception as e:
                 self._logger.messaging_error("Failed to subscribe topics", error=str(e))
                 return False
-
         return True
 
     def start(self) -> bool:
-        """启动消费者"""
         if self._running:
             return True
-
-        if not self.is_connected():
-            if not self.connect():
-                return False
-
+        if not self.is_connected() and not self.connect():
+            return False
         self._running = True
-        self._logger.messaging("RocketMQ Consumer started",
-                              topics=list(self._handlers.keys()))
         return True
 
     def stop(self) -> bool:
-        """停止消费者"""
         self._running = False
-        self._logger.messaging("RocketMQ Consumer stopped")
         return self.disconnect()
 
     def is_running(self) -> bool:
-        """检查是否正在运行"""
         return self._running
 
-    def send_message(self, topic: str, message: Dict[str, Any]) -> bool:
-        """发送消息（仅Mock模式）"""
-        if not self._running or not self.is_connected():
-            return False
-        return True
-
     def test_connection(self) -> bool:
-        """测试连接"""
         return self.health_check()["status"] == "healthy"
 
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .loader import ConfigLoader, EnvironmentVariableResolver
 from .validator import ConfigValidator, SchemaBuilder, AINovelsSchemas
-from src.deepnovel.utils import log_error, log_info, get_logger
+from deepnovel.utils import log_error, log_info, get_logger
 
 
 class ConfigNotFoundError(Exception):
@@ -88,7 +88,25 @@ class ConfigManager:
         try:
             logger = get_logger()
 
-            # 加载基础配置
+            # 优先从 AppConfig 获取已合并的配置（统一入口）
+            try:
+                from .app_config import get_config
+                app_cfg = get_config()
+                raw = getattr(app_cfg, "_raw", None)
+                if raw:
+                    self._config = raw
+                    self._initialized = True
+                    if validate:
+                        is_valid, errors = self._validator.validate(self._config, AINovelsSchemas.get_settings_schema())
+                        if not is_valid:
+                            logger.config_error("Config validation failed", errors=errors)
+                            raise ConfigValidationError(f"Config validation failed: {errors}")
+                    logger.config("Configuration manager initialized from AppConfig")
+                    return True
+            except Exception:
+                pass
+
+            # 降级：直接加载 JSON 文件（旧行为）
             if config_paths is None:
                 config_paths = self.DEFAULT_CONFIG_PATHS.copy()
 
@@ -328,101 +346,35 @@ class Settings:
             return self._manager.get_required(key)
         raise ConfigNotFoundError(f"Required config '{key}' not found - Settings not initialized")
 
+    def _lazy_init(self) -> bool:
+        """懒加载 ConfigManager（从 AppConfig 读取）"""
+        try:
+            config_manager = ConfigManager()
+            if config_manager.initialize(validate=False):
+                self._manager = config_manager
+                return True
+        except Exception:
+            pass
+        return False
+
     def get_llm(self, provider: str = None) -> Dict[str, Any]:
         """获取LLM配置"""
         if self._manager:
             return self._manager.get_llm(provider)
-        # 如果settings未初始化，尝试懒加载
-        import os
-        from src.deepnovel.config.manager import ConfigManager
-
-        try:
-            config_manager = ConfigManager()
-            config_paths = [
-                "config/system.json",
-                "config/database.json",
-                "config/llm.json",
-                "config/novel_settings.json",
-                "config/agents.json",
-                "config/messaging.json"
-            ]
-            existing_paths = [p for p in config_paths if os.path.exists(p)]
-
-            if config_manager.initialize(existing_paths, validate=False):
-                self._manager = config_manager
-                return config_manager.get_llm(provider)
-        except Exception:
-            pass
-
-        return {}
+        self._lazy_init()
+        return self._manager.get_llm(provider) if self._manager else {}
 
     def get_database(self, name: str) -> Dict[str, Any]:
         """获取数据库配置"""
-        if self._manager:
-            return self._manager.get_database(name)
-        # 如果settings未初始化，尝试懒加载
-        return self._lazy_load_and_get_database(name)
-
-    def _lazy_load_and_get_database(self, name: str) -> Dict[str, Any]:
-        """
-        懒加载配置并获取数据库配置（在settings未初始化时调用）
-
-        Args:
-            name: 数据库名称
-
-        Returns:
-            数据库配置字典
-        """
-        import os
-        from src.deepnovel.config.manager import ConfigManager
-
-        try:
-            config_manager = ConfigManager()
-            config_paths = [
-                "config/system.json",
-                "config/database.json",
-                "config/llm.json",
-                "config/novel_settings.json",
-                "config/agents.json",
-                "config/messaging.json"
-            ]
-            existing_paths = [p for p in config_paths if os.path.exists(p)]
-
-            if config_manager.initialize(existing_paths, validate=False):
-                self._manager = config_manager
-                return config_manager.get_database(name)
-        except Exception:
-            pass
-
-        return {}
+        if not self._manager:
+            self._lazy_init()
+        return self._manager.get_database(name) if self._manager else {}
 
     def get_agent(self, name: str) -> Dict[str, Any]:
         """获取Agent配置"""
-        if self._manager:
-            return self._manager.get_agent(name)
-        # 如果settings未初始化，尝试懒加载
-        import os
-        from src.deepnovel.config.manager import ConfigManager
-
-        try:
-            config_manager = ConfigManager()
-            config_paths = [
-                "config/system.json",
-                "config/database.json",
-                "config/llm.json",
-                "config/novel_settings.json",
-                "config/agents.json",
-                "config/messaging.json"
-            ]
-            existing_paths = [p for p in config_paths if os.path.exists(p)]
-
-            if config_manager.initialize(existing_paths, validate=False):
-                self._manager = config_manager
-                return config_manager.get_agent(name)
-        except Exception:
-            pass
-
-        return {}
+        if not self._manager:
+            self._lazy_init()
+        return self._manager.get_agent(name) if self._manager else {}
 
 
 # 全局设置访问器

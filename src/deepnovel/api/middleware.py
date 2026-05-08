@@ -18,8 +18,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from src.deepnovel.utils import get_logger
-from src.deepnovel.core.performance_monitor import get_performance_monitor
+from deepnovel.utils import get_logger
+from deepnovel.core.performance_monitor import get_performance_monitor
 
 logger = get_logger()
 

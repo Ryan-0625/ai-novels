@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from enum import Enum
 import weakref
 
-from src.deepnovel.utils import log_info, log_warn, log_error, get_logger
+from deepnovel.utils import log_info, log_warn, log_error, get_logger
 
 
 T = TypeVar('T')

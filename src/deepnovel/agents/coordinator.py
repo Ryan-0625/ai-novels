@@ -25,16 +25,16 @@ from .constants import (
     DEFAULT_GENRE,
     CONTENT_TRUNCATE_LENGTH_LARGE,
 )
-from src.deepnovel.messaging.rocketmq_producer import RocketMQProducer, ProducerConfig
-from src.deepnovel.messaging.rocketmq_consumer import ConsumerConfig, RocketMQConsumer
-from src.deepnovel.model.message import (
+from deepnovel.messaging.rocketmq_producer import RocketMQProducer, ProducerConfig
+from deepnovel.messaging.rocketmq_consumer import ConsumerConfig, RocketMQConsumer
+from deepnovel.message.message import (
     TaskRequest,
     TaskResponse,
     TaskStatusUpdate,
     AgentMessage
 )
-from src.deepnovel.config.manager import settings
-from src.deepnovel.utils import log_info, log_warn, log_error, get_logger
+from deepnovel.config.manager import settings
+from deepnovel.utils import log_info, log_warn, log_error, get_logger
 
 # 事件总线（用于发布 DAG 执行事件）
 from deepnovel.core.event_bus import event_bus as _event_bus
@@ -1053,7 +1053,7 @@ Return as JSON with the same structure."""
         enhanced_context = [base_context]
 
         # 从数据库读取相关数据作为上下文
-        from src.deepnovel.persistence import get_persistence_manager
+        from deepnovel.persistence import get_persistence_manager
 
         pm = get_persistence_manager()
         task_id = self._current_task.get("task_id", "") if self._current_task else ""

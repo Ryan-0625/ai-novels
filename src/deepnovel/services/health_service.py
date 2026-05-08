@@ -157,7 +157,7 @@ class HealthService:
     def _get_mysql_client(self) -> MySQLClient:
         """获取MySQL客户端"""
         if "mysql" not in self._clients:
-            from src.deepnovel.config.manager import settings
+            from deepnovel.config.manager import settings
             db_config = settings.get_database("mysql")
             self._clients["mysql"] = MySQLClient(config=db_config)
         return self._clients["mysql"]
@@ -165,7 +165,7 @@ class HealthService:
     def _get_neo4j_client(self) -> Neo4jClient:
         """获取Neo4j客户端"""
         if "neo4j" not in self._clients:
-            from src.deepnovel.config.manager import settings
+            from deepnovel.config.manager import settings
             db_config = settings.get_database("neo4j")
             self._clients["neo4j"] = Neo4jClient(config=db_config)
         return self._clients["neo4j"]
@@ -173,7 +173,7 @@ class HealthService:
     def _get_mongodb_client(self) -> MongoDBClient:
         """获取MongoDB客户端"""
         if "mongodb" not in self._clients:
-            from src.deepnovel.config.manager import settings
+            from deepnovel.config.manager import settings
             db_config = settings.get_database("mongodb")
             self._clients["mongodb"] = MongoDBClient(config=db_config)
         return self._clients["mongodb"]
@@ -181,7 +181,7 @@ class HealthService:
     def _get_chromadb_client(self) -> ChromaDBClient:
         """获取ChromaDB客户端"""
         if "chromadb" not in self._clients:
-            from src.deepnovel.config.manager import settings
+            from deepnovel.config.manager import settings
             db_config = settings.get_database("chromadb")
             self._clients["chromadb"] = ChromaDBClient(config=db_config)
             # 初始化时建立连接
@@ -193,7 +193,7 @@ class HealthService:
         """获取RocketMQ生产者"""
         if "producer" not in self._clients:
             try:
-                from src.deepnovel.config.manager import settings
+                from deepnovel.config.manager import settings
                 msg_config = settings.get("messaging", {})
                 rocketmq_config = msg_config.get("rocketmq", {})
                 name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:19876"))
@@ -213,7 +213,7 @@ class HealthService:
         """获取RocketMQ消费者"""
         if "consumer" not in self._clients:
             try:
-                from src.deepnovel.config.manager import settings
+                from deepnovel.config.manager import settings
                 msg_config = settings.get("messaging", {})
                 rocketmq_config = msg_config.get("rocketmq", {})
                 name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:19876"))
@@ -436,7 +436,7 @@ class HealthService:
         """检查Ollama LLM服务"""
         start_time = time.time()
         try:
-            from src.deepnovel.config.manager import settings
+            from deepnovel.config.manager import settings
             # Router's initialize() does self._config.get("llm", {}) then iterates items()
             # So we need to wrap the llm config under "llm" key
             llm_config = {"llm": settings.get("llm", {})}

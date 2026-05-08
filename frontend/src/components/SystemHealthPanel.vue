@@ -368,14 +368,14 @@ onUnmounted(() => {
     </div>
 
     <!-- 警告提示 -->
-    <div v-if="healthData?.summary.unhealthy > 0" class="warning-banner">
+    <div v-if="healthData?.summary?.unhealthy! > 0" class="warning-banner">
       <div class="warning-content">
         <div class="warning-icon">
           <el-icon><WarningFilled /></el-icon>
         </div>
         <div class="warning-text">
           <div class="warning-title">检测到异常组件</div>
-          <div class="warning-desc">有 {{ healthData.summary.unhealthy }} 个组件异常，请检查相关服务是否正常运行</div>
+          <div class="warning-desc">有 {{ healthData!.summary.unhealthy }} 个组件异常，请检查相关服务是否正常运行</div>
         </div>
       </div>
     </div>

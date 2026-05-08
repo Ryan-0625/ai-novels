@@ -16,8 +16,8 @@ from enum import Enum
 from datetime import datetime
 
 from .base import BaseAgent, AgentConfig, Message, MessageType
-from src.deepnovel.persistence import get_persistence_manager
-from src.deepnovel.persistence.agent_persist import OutlinePersistence
+from deepnovel.persistence import get_persistence_manager
+from deepnovel.persistence.agent_persist import OutlinePersistence
 
 
 class OutlinePhase(Enum):

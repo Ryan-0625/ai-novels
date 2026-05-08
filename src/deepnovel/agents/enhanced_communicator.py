@@ -20,16 +20,16 @@ import threading
 import asyncio
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 
-from src.deepnovel.agents.agent_communicator import AgentCommunicator, AgentMessageHandler
-from src.deepnovel.model.message import (
+from deepnovel.agents.agent_communicator import AgentCommunicator, AgentMessageHandler
+from deepnovel.message.message import (
     TaskRequest, TaskResponse, TaskStatusUpdate,
     AgentMessage, MessageType
 )
-from src.deepnovel.core.context_manager import (
+from deepnovel.core.context_manager import (
     ContextManager, ContextScope, ContextPriority,
     shared_context_pool, create_context_manager
 )
-from src.deepnovel.utils import log_info, log_error, log_warn, get_logger
+from deepnovel.utils import log_info, log_error, log_warn, get_logger
 
 
 class MessagePriority(Enum):

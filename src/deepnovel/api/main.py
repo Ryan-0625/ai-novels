@@ -25,9 +25,9 @@ src_dir = os.path.join(cwd, 'src')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from src.deepnovel.agents.coordinator import CoordinatorAgent
-from src.deepnovel.agents.agent_communicator import AgentCommunicator
-from src.deepnovel.agents.implementations import (
+from deepnovel.agents.coordinator import CoordinatorAgent
+from deepnovel.agents.agent_communicator import AgentCommunicator
+from deepnovel.agents.implementations import (
     HealthCheckerAgent,
     ConfigEnhancerAgent,
     OutlinePlannerAgent,
@@ -39,14 +39,14 @@ from src.deepnovel.agents.implementations import (
     ContentGeneratorAgent,
     QualityCheckerAgent,
 )
-from src.deepnovel.model.message import TaskRequest, TaskResponse, TaskStatusUpdate, AgentMessage
-from src.deepnovel.utils import log_info, log_error
+from deepnovel.message.message import TaskRequest, TaskResponse, TaskStatusUpdate, AgentMessage
+from deepnovel.utils import log_info, log_error
 
 # 新版配置系统（ConfigHub）
 from deepnovel.config.hub import ConfigHub, get_config_hub
 
 # 旧版配置系统（向后兼容，Phase 5 后移除）
-from src.deepnovel.config.manager import ConfigManager, settings
+from deepnovel.config.manager import ConfigManager, settings
 
 # 新版任务编排器（Step 11）
 from deepnovel.agents.task_orchestrator import TaskOrchestrator
@@ -62,6 +62,9 @@ from .controllers import (
 
 # 导入旧版路由
 from .legacy_routes import router
+
+# 可观测性路由（健康检查 + Prometheus 指标）
+from .health_routes import router as health_router
 
 # Step 11: 新版领域路由
 from deepnovel.api.routes import task_router, agent_router, config_router
@@ -119,25 +122,12 @@ async def startup_event():
     except Exception as e:
         log_error(f"ConfigHub initialization failed: {e}")
 
-    # 2. 保留旧版 ConfigManager 初始化（向后兼容）
+    # 2. 初始化旧版 ConfigManager（从 AppConfig 读取，兼容旧模块）
     config_manager = ConfigManager()
-    config_paths = [
-        "config/system.json",
-        "config/database.json",
-        "config/llm.json",
-        "config/novel_settings.json",
-        "config/agents.json",
-        "config/messaging.json"
-    ]
-
-    existing_paths = [p for p in config_paths if os.path.exists(p)]
-    if existing_paths:
-        log_info(f"Loading legacy config files: {existing_paths}")
-        if config_manager.initialize(existing_paths):
-            settings.initialize(config_manager)
-            log_info("Legacy ConfigManager initialized")
-        else:
-            log_error("Failed to initialize legacy ConfigManager")
+    if config_manager.initialize():
+        settings.initialize(config_manager)
+    else:
+        log_error("Failed to initialize legacy ConfigManager")
 
     # 初始化CoordinatorAgent（不启动通信器以避免阻塞）
     app.state.coordinator = CoordinatorAgent()
@@ -181,6 +171,28 @@ async def startup_event():
     # app.state.communicator = AgentCommunicator("api_server")
     # if hasattr(app.state.coordinator, 'start_communication'):
     #     app.state.coordinator.start_communication()
+
+    # 预热 Ollama 模型（避免首次请求超时）
+    try:
+        import json
+        import urllib.request
+        warmup_data = json.dumps({
+            "model": "qwen2.5-7b",
+            "prompt": "Hello",
+            "stream": False,
+            "options": {"num_predict": 1},
+            "keep_alive": "30m"
+        }).encode()
+        req = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=warmup_data,
+            headers={"Content-Type": "application/json"}
+        )
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=300))
+        log_info("Ollama model warmup completed")
+    except Exception as e:
+        log_error(f"Ollama model warmup failed (non-critical): {e}")
 
     log_info("AI-Novels API started successfully")
 
@@ -278,6 +290,9 @@ app.include_router(router, prefix="/api/v1")
 app.include_router(task_router, prefix="/api/v2")
 app.include_router(agent_router, prefix="/api/v2")
 app.include_router(config_router, prefix="/api/v2")
+
+# 可观测性路由
+app.include_router(health_router, prefix="/api/v2")
 
 # 健康检查
 @app.get("/health")

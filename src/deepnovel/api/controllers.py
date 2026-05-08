@@ -36,19 +36,19 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler('logs/server.log', encoding='utf-8'))
 
 # 导入 HierarchicalLogger 用于分类日志
-from src.deepnovel.utils import get_logger
+from deepnovel.utils import get_logger
 hierarchical_logger = get_logger()
 
 # 导入数据模型
-from src.deepnovel.model.message import TaskRequest, TaskStatusUpdate, TaskResponse
-from src.deepnovel.agents.coordinator import CoordinatorAgent, WorkflowState
-from src.deepnovel.agents.agent_communicator import AgentCommunicator
-from src.deepnovel.config.manager import ConfigManager, settings
-from src.deepnovel.core.llm_router import get_llm_router
-from src.deepnovel.utils import log_info, log_error, get_logger, LogContext
+from deepnovel.message.message import TaskRequest, TaskStatusUpdate, TaskResponse
+from deepnovel.agents.coordinator import CoordinatorAgent, WorkflowState
+from deepnovel.agents.agent_communicator import AgentCommunicator
+from deepnovel.config.manager import ConfigManager, settings
+from deepnovel.core.llm_router import get_llm_router
+from deepnovel.utils import log_info, log_error, get_logger, LogContext
 
 # 导入健康检查服务
-from src.deepnovel.services.health_service import get_health_service, HealthService
+from deepnovel.services.health_service import get_health_service, HealthService
 
 
 class TaskController:
@@ -252,14 +252,18 @@ class TaskController:
 
             # 初始化Coordinator
             coordinator = CoordinatorAgent()
+            # 为可选字段提供默认值
+            chapters = request.chapters or 5
+            word_count = request.word_count_per_chapter or 2000
+            style = request.style or "light"
             # 设置当前任务信息，供Agent获取task_id等参数
             coordinator._current_task = {
                 "task_id": task_id,
                 "title": request.title,
                 "genre": request.genre,
-                "chapters": request.chapters,
-                "word_count_per_chapter": request.word_count_per_chapter,
-                "style": request.style,
+                "chapters": chapters,
+                "word_count_per_chapter": word_count,
+                "style": style,
                 "description": request.description,
                 "user_id": request.user_id
             }
@@ -273,10 +277,10 @@ class TaskController:
                 "intent": "generate_novel",
                 "parameters": {
                     "genre": request.genre,
-                    "length": "long" if request.chapters and request.chapters > 10 else "short",
-                    "style": request.style,
+                    "length": "long" if chapters and chapters > 10 else "short",
+                    "style": style,
                     "theme": request.title,
-                    "chapters": request.chapters,
+                    "chapters": chapters,
                     "word_count_per_chapter": request.word_count_per_chapter,
                 }
             }
@@ -323,9 +327,10 @@ class TaskController:
                     hierarchical_logger.task("Task no next node", task_id=task_id)
                     break
 
-                # 执行节点
+                # 执行节点（在线程池中运行以免阻塞事件循环）
                 logger.info(f"Task {task_id}: Calling coordinator.execute_next_node(), coordinator id={id(coordinator)}")
-                result = coordinator.execute_next_node()
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, coordinator.execute_next_node)
                 logger.info(f"Task {task_id}: execute_next_node result={result}")
                 hierarchical_logger.task("Task execute result", task_id=task_id, result=result)
 
@@ -379,7 +384,7 @@ class StatusController:
         Returns:
             List[Dict]: 章节列表
         """
-        from src.deepnovel.persistence.manager import get_persistence_manager
+        from deepnovel.persistence.manager import get_persistence_manager
 
         pm = get_persistence_manager()
         if not pm.mongodb_client:
@@ -428,7 +433,7 @@ class StatusController:
         Returns:
             Dict: 章节内容
         """
-        from src.deepnovel.persistence.manager import get_persistence_manager
+        from deepnovel.persistence.manager import get_persistence_manager
 
         pm = get_persistence_manager()
         if not pm.mongodb_client:
@@ -619,14 +624,14 @@ class ConfigController:
             },
             "llm": {
                 "provider": "ollama",
-                "model": "qwen2.5-14b",
+                "model": "qwen2.5-7b",
                 "max_tokens": 8192
             },
             "messaging": {
                 "rocketmq": {"name_server": "localhost:9876"}
             },
             "agents": {
-                "coordinator": {"model": "qwen2.5-14b"},
+                "coordinator": {"model": "qwen2.5-7b"},
                 "default": {"model": "qwen2.5-7b"}
             }
         }

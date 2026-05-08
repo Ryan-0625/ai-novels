@@ -22,7 +22,7 @@ from .adapters.openai import OpenAIClient
 from .adapters.gemini import GeminiClient
 from .adapters.minimax import MinimaxClient
 
-from src.deepnovel.utils import log_error
+from deepnovel.utils import log_error
 
 
 class Provider(Enum):

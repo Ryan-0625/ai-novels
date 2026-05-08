@@ -14,18 +14,18 @@ from enum import Enum
 import threading
 from queue import Queue
 
-from src.deepnovel.messaging.rocketmq_producer import BaseProducer, RocketMQProducer, RocketMQConfig
-from src.deepnovel.messaging.rocketmq_consumer import BaseConsumer, RocketMQConsumer, ConsumerConfig, MessageHandler
-from src.deepnovel.model.message import (
+from deepnovel.messaging.rocketmq_producer import BaseProducer, RocketMQProducer, RocketMQConfig
+from deepnovel.messaging.rocketmq_consumer import BaseConsumer, RocketMQConsumer, ConsumerConfig, MessageHandler
+from deepnovel.message.message import (
     TaskRequest,
     TaskResponse,
     TaskStatusUpdate,
     AgentMessage,
     MessageType
 )
-from src.deepnovel.model.entities import Character, WorldEntity, OutlineNode, ChapterOutline, Conflict, NarrativeHook
-from src.deepnovel.utils.id_utils import generate_id
-from src.deepnovel.utils import log_info, log_warn, log_error
+from deepnovel.message.entities import Character, WorldEntity, OutlineNode, ChapterOutline, Conflict, NarrativeHook
+from deepnovel.utils.id_utils import generate_id
+from deepnovel.utils import log_info, log_warn, log_error
 
 
 class AgentCommunicationState(Enum):
@@ -43,7 +43,7 @@ class AgentConfig:
     name: str = "agent"
     description: str = ""
     provider: str = "ollama"
-    model: str = "qwen2.5-14b"
+    model: str = "qwen2.5-7b"
     system_prompt: str = ""
     max_tokens: int = 8192
 

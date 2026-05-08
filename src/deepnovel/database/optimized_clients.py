@@ -16,11 +16,11 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
 # 导入原始客户端
-from src.deepnovel.database.base import DatabaseBase, CRUDInterface, GraphInterface, VectorInterface
-from src.deepnovel.database.mysql_client import MySQLClient, MySQLConfig
-from src.deepnovel.database.mongodb_client import MongoDBClient, MongoDBConfig
-from src.deepnovel.database.neo4j_client import Neo4jClient, Neo4jConfig
-from src.deepnovel.database.chromadb_client import ChromaDBClient, ChromaDBConfig
+from deepnovel.database.base import DatabaseBase, CRUDInterface, GraphInterface, VectorInterface
+from deepnovel.database.mysql_client import MySQLClient, MySQLConfig
+from deepnovel.database.mongodb_client import MongoDBClient, MongoDBConfig
+from deepnovel.database.neo4j_client import Neo4jClient, Neo4jConfig
+from deepnovel.database.chromadb_client import ChromaDBClient, ChromaDBConfig
 
 logger = logging.getLogger(__name__)
 

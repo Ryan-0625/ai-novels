@@ -18,7 +18,7 @@ from enum import Enum
 
 from ..config.manager import ConfigManager, settings
 from ..llm.cache import get_llm_cache
-from src.deepnovel.utils import log_error, log_info
+from deepnovel.utils import log_error, log_info
 
 
 class LLMProvider(Enum):
@@ -250,6 +250,7 @@ class OllamaClient(BaseLLMClient):
         else:
             combined_prompt = prompt
 
+        # keep_alive=1800 让模型在内存中保持30分钟，避免后续Agent冷加载
         response = self._client.chat(
             model=self.config.model,
             messages=[
@@ -262,6 +263,7 @@ class OllamaClient(BaseLLMClient):
                 "temperature": self.config.temperature,
                 "num_predict": self.config.max_tokens
             },
+            keep_alive=1800,
             **kwargs
         )
         return response["message"]["content"]
@@ -286,6 +288,7 @@ class OllamaClient(BaseLLMClient):
                     "num_predict": self.config.max_tokens
                 },
                 stream=True,
+                keep_alive=1800,
                 **kwargs
             )
             for chunk in response:
@@ -593,16 +596,33 @@ class LLMRouter:
             # 初始化默认提供商
             self._default_provider = llm_config.get("default", "ollama")
 
+            # 已知的非provider配置项，跳过这些键
+            SKIP_KEYS = {"default", "provider", "model", "embedding", "performance", "fallback", "version", "description"}
+
             # 初始化所有配置的提供商
             for provider_name, provider_config in llm_config.items():
-                if provider_name == "default":
+                if provider_name in SKIP_KEYS:
+                    continue
+                if not isinstance(provider_config, dict):
                     continue
                 self._init_provider(provider_name, provider_config)
+
+            # 降级: 如果无任何provider注册，创建默认Ollama客户端
+            if not self._clients:
+                log_info("No LLM providers configured, creating default Ollama client")
+                self._init_provider("ollama", {
+                    "provider": "ollama",
+                    "model": "qwen2.5-7b",
+                    "base_url": "http://localhost:11434",
+                    "temperature": 0.7,
+                    "max_tokens": 8192,
+                    "timeout": 600
+                })
 
             # 从 agents.json 读取 agent_router.default_timeout 并应用
             agents_config = config.get("agents", {})
             agent_router = agents_config.get("agent_router", {})
-            default_timeout = agent_router.get("default_timeout", 120)
+            default_timeout = agent_router.get("default_timeout", 600)
             self.set_timeout(default_timeout)
 
             # 健康检查

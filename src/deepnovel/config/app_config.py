@@ -1,16 +1,14 @@
 """
 统一应用配置 — Pydantic Settings v2
 
-替代旧的 ConfigManager/Settings，提供：
-- 类型安全的配置模型
-- 环境变量自动注入
-- 分层覆盖（默认值 → .env → 环境变量）
-- 敏感信息脱敏
+单⼀配置入口：同时加载 .env 和 config/*.json 文件。
+所有模块通过 get_config_hub() 获取配置，不再分两套系统。
 
-@file: config/app_config.py
-@date: 2026-04-29
+分层覆盖优先级（低 → 高）：Pydantic 默认值 < JSON 文件 < .env 文件 < 系统环境变量
 """
 
+import json
+import os
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
@@ -160,14 +158,91 @@ class AppConfig(BaseSettings):
         return f"AppConfig(env={self.environment}, debug={self.debug}, port={self.port})"
 
 
+# ── JSON 配置加载（与 .env 合并） ──────────────────────────
+
+_CONFIG_FILES = [
+    "config/database.json",
+    "config/llm.json",
+    "config/agents.json",
+    "config/generation.json",
+    "config/messaging.json",
+]
+
+
+def _load_json_configs() -> Dict[str, Any]:
+    """加载所有 JSON 配置文件并深度合并"""
+    merged: Dict[str, Any] = {}
+    base = os.getcwd()
+    for path in _CONFIG_FILES:
+        full = os.path.join(base, path)
+        if not os.path.exists(full):
+            continue
+        try:
+            with open(full, "r", encoding="utf-8") as f:
+                data: Dict[str, Any] = json.load(f)
+            for key, value in data.items():
+                if key in ("version", "description"):
+                    continue
+                if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                    merged[key].update(value)
+                else:
+                    merged[key] = value
+        except Exception:
+            continue
+    return merged
+
+
+def _build_init_kwargs(json_data: Dict[str, Any]) -> Dict[str, Any]:
+    """从 JSON 数据提取 AppConfig 初始化参数（会被 .env 覆盖）"""
+    kwargs: Dict[str, Any] = {}
+
+    # LLM 配置
+    llm_json = json_data.get("llm", {})
+    if isinstance(llm_json, dict):
+        llm_kwargs: Dict[str, Any] = {}
+        provider_name = llm_json.get("provider") or llm_json.get("default", "ollama")
+        llm_kwargs["default_provider"] = provider_name
+
+        # 构建 providers 字典
+        providers = {}
+        for prov_name in ("ollama", "qwen", "openai", "gemini", "minimax"):
+            prov = llm_json.get(prov_name)
+            if isinstance(prov, dict):
+                try:
+                    providers[prov_name] = LLMProviderConfig(
+                        provider=prov_name,
+                        model=prov.get("model", "qwen2.5-7b"),
+                        temperature=prov.get("temperature", 0.7),
+                        max_tokens=prov.get("max_tokens", 8192),
+                        timeout=prov.get("timeout", 600),
+                    )
+                except Exception:
+                    pass
+        if providers:
+            llm_kwargs["providers"] = providers
+
+        kwargs["llm"] = llm_kwargs
+
+    return kwargs
+
+
 @lru_cache
 def get_config() -> AppConfig:
     """获取全局配置单例
 
-    使用 lru_cache 确保全进程只有一个实例。
-    首次调用时从环境变量和 .env 文件加载。
+    从 .env 文件和 config/*.json 统一加载配置。
+    优先级（低 → 高）：Pydantic 默认值 < JSON 文件 < .env 文件 < 系统环境变量
     """
-    return AppConfig()
+    json_data = _load_json_configs()
+    init_kwargs = _build_init_kwargs(json_data)
+
+    # AppConfig() 自动读取 .env 和系统环境变量，覆盖 init_kwargs
+    config = AppConfig(**init_kwargs)
+
+    # 存储原始 JSON 数据供旧版 ConfigManager 使用
+    object.__setattr__(config, "_raw", json_data)
+
+    return config
 
 
 def reload_config() -> AppConfig:

@@ -545,6 +545,21 @@ class TaskOrchestrator:
             )
 
         try:
+            # 发布 Agent 开始事件
+            if self._event_bus:
+                await self._event_bus.publish_type(
+                    EventType.AGENT_STARTED,
+                    payload={
+                        "task_id": queued.task_id,
+                        "agent_name": queued.agent_name,
+                        "stage": "processing",
+                        "progress": 0.1,
+                        "worker": worker_name,
+                        "payload": queued.payload,
+                    },
+                    source="task_orchestrator",
+                )
+
             # 执行
             agent = worker.agent
             message = Message(
@@ -593,6 +608,21 @@ class TaskOrchestrator:
                         "task_id": queued.task_id,
                         "worker": worker_name,
                         "elapsed": time.time() - start_time,
+                    },
+                    source="task_orchestrator",
+                )
+
+            # 发布 Agent 完成事件
+            if self._event_bus:
+                await self._event_bus.publish_type(
+                    EventType.AGENT_COMPLETED,
+                    payload={
+                        "task_id": queued.task_id,
+                        "agent_name": queued.agent_name,
+                        "stage": "completed",
+                        "progress": 1.0,
+                        "elapsed": time.time() - start_time,
+                        "result_length": len(str(result)) if result else 0,
                     },
                     source="task_orchestrator",
                 )
@@ -652,6 +682,17 @@ class TaskOrchestrator:
                         "worker": worker_name,
                         "error": error,
                         "retries": queued.retry_count,
+                    },
+                    source="task_orchestrator",
+                    priority=EventPriority.HIGH,
+                )
+                await self._event_bus.publish_type(
+                    EventType.AGENT_FAILED,
+                    payload={
+                        "task_id": queued.task_id,
+                        "agent_name": queued.agent_name,
+                        "error": error,
+                        "stage": "failed",
                     },
                     source="task_orchestrator",
                     priority=EventPriority.HIGH,

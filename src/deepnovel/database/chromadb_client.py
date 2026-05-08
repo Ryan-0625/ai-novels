@@ -24,6 +24,13 @@ try:
 except ImportError:
     HAS_OPENAI = False
 
+# 尝试导入 Ollama
+try:
+    import ollama
+    HAS_OLLAMA = True
+except ImportError:
+    HAS_OLLAMA = False
+
 
 class ChromaDBClient(DatabaseBase, VectorInterface):
     """
@@ -106,22 +113,33 @@ class ChromaDBClient(DatabaseBase, VectorInterface):
                 api_key=self._openai_api_key,
                 model_name=self._openai_model
             )
-        else:
-            # 使用默认的哈希嵌入函数（无需下载模型）
-            # 注意：ChromaDB的新API需要name()方法
-            class HashEmbeddingFunction(EmbeddingFunction[Documents]):
+        elif self._embed_function == "ollama" or (self._embed_function == "default" and HAS_OLLAMA):
+            # 使用 Ollama 作为后端嵌入函数
+            class OllamaChromaEmbeddingFunction(EmbeddingFunction[Documents]):
+                def __init__(self, model: str = "qwen2.5", base_url: str = "http://localhost:11434"):
+                    import ollama
+                    self._client = ollama.Client(host=base_url)
+                    self._model = model
+
                 def __call__(self, input: Documents) -> Embeddings:
-                    import hashlib
                     return [
-                        [float(ord(c)) / 255.0 for c in hashlib.md5(doc.encode()).hexdigest()[:32]]
+                        self._client.embeddings(model=self._model, prompt=doc)["embedding"]
                         for doc in input
                     ]
 
                 def name(self) -> str:
-                    """返回嵌入函数名称（ChromaDB新API要求）"""
-                    return "hash"
+                    return f"ollama_{self._model}"
 
-            self._embedder = HashEmbeddingFunction()
+            import os
+            model = os.environ.get("OLLAMA_EMBEDDING_MODEL", "qwen2.5")
+            self._embedder = OllamaChromaEmbeddingFunction(model=model)
+        else:
+            raise ValueError(
+                f"No usable embedding backend. "
+                f"Set embed_function='openai' with OPENAI_API_KEY, "
+                f"or install ollama (pip install ollama) for local embeddings. "
+                f"Got: {self._embed_function}, HAS_OLLAMA={HAS_OLLAMA}, HAS_OPENAI={HAS_OPENAI}"
+            )
 
     def connect(self) -> bool:
         """

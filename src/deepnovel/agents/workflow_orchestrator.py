@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
-from src.deepnovel.utils import log_error, log_info, get_logger
-from src.deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
+from deepnovel.utils import log_error, log_info, get_logger
+from deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
 
 
 class TaskState(Enum):

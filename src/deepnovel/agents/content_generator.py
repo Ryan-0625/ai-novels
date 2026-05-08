@@ -23,9 +23,9 @@ from .constants import (
     DEFAULT_WORDS_PER_CHAPTER,
     DEFAULT_GENRE,
 )
-from src.deepnovel.persistence import get_persistence_manager
-from src.deepnovel.persistence.agent_persist import ChapterPersistence
-from src.deepnovel.config import settings
+from deepnovel.persistence import get_persistence_manager
+from deepnovel.persistence.agent_persist import ChapterPersistence
+from deepnovel.config import settings
 
 
 class WritingMode(Enum):
@@ -676,8 +676,10 @@ class ContentGeneratorAgent(BaseAgent):
             # 清理LLM响应
             return self._clean_generated_content(llm_response)
 
-        # Fallback: 使用原有的基于风格的生成方法
-        return self._generate_based_on_context_fallback(context, style, target_words, prompt_type)
+        raise RuntimeError(
+            f"LLM generation failed for context={context.prompt_context[:50] if context.prompt_context else 'empty'}, "
+            f"style={style.name}. No fallback available — LLM must return valid content."
+        )
 
     def _build_generation_prompt(
         self,
@@ -875,66 +877,6 @@ The content you output will be presented directly to readers, please ensure 100%
         content = re.sub(r'^\d+[\.\)]\s*', '', content.strip())
 
         return content.strip()
-
-    def _generate_based_on_context_fallback(
-        self,
-        context: ContentContext,
-        style: StyleConfig,
-        target_words: int,
-        prompt_type: str = "narrative"
-    ) -> str:
-        """基于上下文生成内容 - Fallback方法"""
-
-        # 基于风格调整生成参数
-        vocab_modifier = style.vocabulary_level - 5
-        metaphor_modifier = style.metaphor_frequency
-
-        # 生成基础文本
-        base_text = self._generate_base_text(
-            context,
-            target_words,
-            prompt_type
-        )
-
-        # 应用风格修饰
-        styled_text = self._apply_style_modifiers(
-            base_text,
-            style,
-            vocab_modifier,
-            metaphor_modifier
-        )
-
-        return styled_text
-
-    def _generate_base_text(
-        self,
-        context: ContentContext,
-        target_words: int,
-        prompt_type: str
-    ) -> str:
-        """生成基础文本"""
-        # 简化实现：生成模拟内容
-        chapters = [
-            "The morning sun rose over the horizon, casting long shadows across the landscape.",
-            "Heavy clouds gathered on the horizon, promising rain before evening.",
-            "The town bustled with activity as merchants set up their stalls.",
-            "A messenger arrived, breathless and urgent, bearing news that changed everything.",
-        ]
-
-        paragraphs = []
-        current_length = 0
-
-        while current_length < target_words:
-            paragraph = random.choice(chapters) + " "
-            if random.random() < 0.3:
-                paragraph += random.choice(chapters) + " "
-            if random.random() < 0.2:
-                paragraph += random.choice(chapters)
-
-            paragraphs.append(paragraph)
-            current_length += len(paragraph.split())
-
-        return "\n\n".join(paragraphs[:max(1, target_words // 50)])
 
     def _apply_style_modifiers(
         self,

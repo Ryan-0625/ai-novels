@@ -22,7 +22,7 @@ from typing import Any, Dict, Optional, List
 from pydantic import BaseModel, Field
 import uuid
 import time
-from src.deepnovel.utils import log_error
+from deepnovel.utils import log_error
 
 # 导入控制器
 from .controllers import (
@@ -332,7 +332,7 @@ async def get_system_health_full(deep_check: bool = False):
     result = await health_controller.get_system_health(deep_check)
 
     # 添加连接信息到每个组件
-    from src.deepnovel.config.manager import settings
+    from deepnovel.config.manager import settings
 
     # 获取数据库配置
     db_config = settings.get_database("mysql")

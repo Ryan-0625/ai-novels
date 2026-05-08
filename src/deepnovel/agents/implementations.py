@@ -207,7 +207,7 @@ class HealthCheckerAgent(BaseAgent):
         处理消息 - 健康检查
         调用真实的健康检查服务
         """
-        from src.deepnovel.services.health_service import get_health_service
+        from deepnovel.services.health_service import get_health_service
 
         try:
             health_service = get_health_service()
@@ -286,24 +286,23 @@ Return the outline as a structured JSON response."""
 
         outline = self._generate_with_llm(prompt)
         if outline:
-            # 持久化到数据库
+            # 持久化到数据库（无 MongoDB 时自动回退到文件）
             pm = get_persistence_manager()
             task_id = user_request.get('task_id', '')
-            if pm.mongodb_client:
-                try:
-                    # 解析大纲JSON
-                    import json as json_module
-                    start = outline.find('[')
-                    end = outline.rfind(']') + 1
-                    if start != -1 and end > start:
-                        outline_list = json_module.loads(outline[start:end])
-                        for i, chap_outline in enumerate(outline_list):
-                            OutlinePersistence.save_outline(
-                                pm, task_id, i + 1,
-                                chap_outline
-                            )
-                except Exception as e:
-                    print(f"Failed to save outline to DB: {e}")
+            try:
+                # 解析大纲JSON
+                import json as json_module
+                start = outline.find('[')
+                end = outline.rfind(']') + 1
+                if start != -1 and end > start:
+                    outline_list = json_module.loads(outline[start:end])
+                    for i, chap_outline in enumerate(outline_list):
+                        OutlinePersistence.save_outline(
+                            pm, task_id, i + 1,
+                            chap_outline
+                        )
+            except Exception as e:
+                print(f"Failed to save outline: {e}")
 
             return self._create_message(f"Outline规划完成。生成了详细的章节大纲。")
         else:
@@ -447,26 +446,25 @@ Return as JSON array of characters."""
 
         characters = self._generate_with_llm(prompt)
         if characters:
-            # 持久化到数据库
+            # 持久化到数据库（无 MongoDB 时自动回退到文件）
             pm = get_persistence_manager()
             task_id = user_request.get('task_id', '')
-            if pm.mongodb_client:
-                try:
-                    # 解析角色JSON
-                    import json as json_module
-                    start = characters.find('[')
-                    end = characters.rfind(']') + 1
-                    if start != -1 and end > start:
-                        chars_list = json_module.loads(characters[start:end])
-                        for char in chars_list:
-                            CharacterPersistence.save_character(
-                                pm, task_id,
-                                char.get('name', 'Unknown'),
-                                char.get('type', 'secondary'),
-                                char
-                            )
-                except Exception as e:
-                    print(f"Failed to save characters to DB: {e}")
+            try:
+                # 解析角色JSON
+                import json as json_module
+                start = characters.find('[')
+                end = characters.rfind(']') + 1
+                if start != -1 and end > start:
+                    chars_list = json_module.loads(characters[start:end])
+                    for char in chars_list:
+                        CharacterPersistence.save_character(
+                            pm, task_id,
+                            char.get('name', 'Unknown'),
+                            char.get('type', 'secondary'),
+                            char
+                        )
+            except Exception as e:
+                print(f"Failed to save characters: {e}")
 
             return self._create_message(f"角色生成完成。生成了详细的角色档案。")
         else:
@@ -537,26 +535,25 @@ Return as structured JSON response."""
 
         world = self._generate_with_llm(prompt)
         if world:
-            # 持久化到数据库
+            # 持久化到数据库（无 MongoDB 时自动回退到文件）
             pm = get_persistence_manager()
             task_id = user_request.get('task_id', '')
-            if pm.mongodb_client:
-                try:
-                    # 解析世界设定JSON
-                    import json as json_module
-                    world_data = json_module.loads(world)
+            try:
+                # 解析世界设定JSON
+                import json as json_module
+                world_data = json_module.loads(world)
 
-                    # 保存地点
-                    locations = world_data.get('locations', world_data.get('geography', []))
-                    for loc in locations:
-                        WorldPersistence.save_location(pm, task_id, loc)
+                # 保存地点
+                locations = world_data.get('locations', world_data.get('geography', []))
+                for loc in locations:
+                    WorldPersistence.save_location(pm, task_id, loc)
 
-                    # 保存势力
-                    factions = world_data.get('factions', world_data.get('cultures', []))
-                    for fact in factions:
-                        WorldPersistence.save_faction(pm, task_id, fact)
-                except Exception as e:
-                    print(f"Failed to save world data to DB: {e}")
+                # 保存势力
+                factions = world_data.get('factions', world_data.get('cultures', []))
+                for fact in factions:
+                    WorldPersistence.save_faction(pm, task_id, fact)
+            except Exception as e:
+                print(f"Failed to save world data: {e}")
 
             return self._create_message(f"世界观构建完成。生成了详细的世界设定。")
         else:
@@ -772,18 +769,17 @@ Make it immersive and engaging. Return only the chapter text."""
 
         chapter_content = self._generate_with_llm(prompt)
 
-        # 持久化到数据库
+        # 持久化到数据库（无 MongoDB 时自动回退到文件）
         if chapter_content:
             pm = get_persistence_manager()
-            if pm.mongodb_client:
-                try:
-                    ChapterPersistence.save_chapter(
-                        pm, task_id, chapter_num,
-                        f"Chapter {chapter_num}: {title}",
-                        chapter_content, len(chapter_content.split())
-                    )
-                except Exception as e:
-                    log_error(f"Failed to save chapter to DB: {e}")
+            try:
+                ChapterPersistence.save_chapter(
+                    pm, task_id, chapter_num,
+                    f"Chapter {chapter_num}: {title}",
+                    chapter_content, len(chapter_content.split())
+                )
+            except Exception as e:
+                log_error(f"Failed to save chapter: {e}")
 
             return self._create_message(f"内容生成完成。生成了 {len(chapter_content)} 字符的章节内容。")
         else:

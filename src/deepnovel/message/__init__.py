@@ -7,14 +7,14 @@ AI-Novels 数据模型定义
 @description: 定义消息格式、实体模型和数据传输对象
 """
 
-from src.deepnovel.model.message import (
+from deepnovel.message.message import (
     TaskRequest,
     TaskResponse,
     TaskStatusUpdate,
     AgentMessage,
 )
 
-from src.deepnovel.model.entities import (
+from deepnovel.message.entities import (
     Character,
     WorldEntity,
     OutlineNode,

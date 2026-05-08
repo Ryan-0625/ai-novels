@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "description": "Server configuration template — copy to server.json and customize",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8004,
+    "workers": 1,
+    "reload": false,
+    "timeout": 120
+  }
+}

@@ -53,8 +53,41 @@ export interface ConfigReloadResponse {
   timestamp: string
 }
 
+export interface SSEEvent {
+  type: string
+  source: string
+  timestamp?: number
+  payload: Record<string, any>
+}
+
+export type SSEHandler = (event: SSEEvent) => void
+
+export function connectSSE(
+  onEvent: SSEHandler,
+  onError?: (err: Event) => void,
+  onOpen?: () => void,
+): () => void {
+  const url = `${v2Config.baseURL}/events`
+  const source = new EventSource(url)
+
+  source.onopen = () => onOpen?.()
+  source.onerror = (err) => onError?.(err)
+  source.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data)
+      onEvent(data as SSEEvent)
+    } catch {
+      // ignore malformed events
+    }
+  }
+
+  return () => source.close()
+}
+
 export const apiV2 = {
   // --- 任务管理 ---
+  createTask: (req: { agent_name: string; payload: Record<string, any>; priority?: string; timeout?: number }) =>
+    v2.post('/tasks', req) as Promise<{ task_id: string; agent_name: string; status: string; message: string }>,
   listTasks: () => v2.get('/tasks') as Promise<TaskListResponse>,
   getTask: (taskId: string) => v2.get(`/tasks/${taskId}`) as Promise<any>,
   taskAction: (taskId: string, action: 'pause' | 'resume' | 'cancel') =>

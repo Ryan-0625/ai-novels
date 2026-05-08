@@ -107,7 +107,7 @@ class WebSocketService {
 
   private _scheduleReconnect(): void {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.warn('Max WebSocket reconnect attempts reached')
+      // WebSocket 端点不可用 — 前端应使用 SSE (connectSSE) 获取实时事件
       return
     }
     this.reconnectAttempts++

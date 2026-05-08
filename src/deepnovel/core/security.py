@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from src.deepnovel.utils import log_info, log_warn, log_error, get_logger
+from deepnovel.utils import log_info, log_warn, log_error, get_logger
 
 
 class SecurityUtils:

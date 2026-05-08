@@ -25,7 +25,6 @@ class EmbeddingProvider(Enum):
     OLLAMA = "ollama"
     BGE = "bge"
     QWEN = "qwen"
-    MOCK = "mock"
 
 
 @dataclass
@@ -48,6 +47,14 @@ class BaseEmbeddingBackend(ABC):
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
+
+    @property
+    def provider(self) -> str:
+        return self.config.provider
+
+    @property
+    def dimension(self) -> int:
+        return self.config.dimension
 
     @abstractmethod
     def embed(self, text: str) -> List[float]:
@@ -83,33 +90,6 @@ class BaseEmbeddingBackend(ABC):
             return vector
         return [x / norm for x in vector]
 
-
-class MockEmbeddingBackend(BaseEmbeddingBackend):
-    """Mock 后端（用于测试）"""
-
-    def __init__(self, config: EmbeddingConfig):
-        super().__init__(config)
-        self._dimension = config.dimension
-
-    def embed(self, text: str) -> List[float]:
-        """基于文本哈希生成确定性向量"""
-        import hashlib
-
-        seed = int(hashlib.md5(text.encode()).hexdigest(), 16)
-        # 使用简单的伪随机生成，但确保结果在 -1 到 1 之间
-        vector = []
-        for i in range(self._dimension):
-            # 线性同余生成器
-            seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
-            value = (seed / 0x7FFFFFFF) * 2 - 1
-            vector.append(value)
-
-        if self.config.normalize:
-            return self._normalize(vector)
-        return vector
-
-    def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        return [self.embed(t) for t in texts]
 
 
 class OpenAIEmbeddingBackend(BaseEmbeddingBackend):
@@ -216,13 +196,17 @@ class EmbeddingAdapter:
         EmbeddingProvider.OPENAI: OpenAIEmbeddingBackend,
         EmbeddingProvider.OLLAMA: OllamaEmbeddingBackend,
         EmbeddingProvider.BGE: BgeEmbeddingBackend,
-        EmbeddingProvider.MOCK: MockEmbeddingBackend,
     }
 
     def __init__(self, config: EmbeddingConfig):
         self.config = config
         provider = EmbeddingProvider(config.provider)
-        backend_class = self.BACKENDS.get(provider, MockEmbeddingBackend)
+        backend_class = self.BACKENDS.get(provider)
+        if backend_class is None:
+            raise ValueError(
+                f"Unsupported embedding provider: {config.provider}. "
+                f"Available: {[p.value for p in self.BACKENDS]}"
+            )
         self._backend = backend_class(config)
 
     @property

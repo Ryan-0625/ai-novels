@@ -8,6 +8,7 @@ Agent基类定义
 @description: 定义所有Agent的基础接口和类
 """
 
+import asyncio
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Callable
@@ -15,9 +16,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from src.deepnovel.utils import log_error, log_info, get_logger
-from src.deepnovel.core.llm_router import LLMRouter, get_llm_router
-from src.deepnovel.config.manager import settings
+from deepnovel.utils import log_error, log_info, get_logger
+from deepnovel.core.llm_router import LLMRouter, get_llm_router
+from deepnovel.core.event_bus import event_bus, EventType
+from deepnovel.config.manager import settings
 
 
 class AgentState(Enum):
@@ -83,7 +85,7 @@ class AgentConfig:
     name: str
     description: str = ""
     provider: str = "ollama"
-    model: str = "qwen2.5-14b"
+    model: str = "qwen2.5-7b"
     temperature: float = 0.7
     max_tokens: int = 8192
     system_prompt: str = ""
@@ -111,7 +113,7 @@ class AgentConfig:
             name=name,
             description=config.get("description", ""),
             provider=config.get("provider", "ollama"),
-            model=config.get("model", "qwen2.5-14b"),
+            model=config.get("model", "qwen2.5-7b"),
             temperature=config.get("temperature", 0.7),
             max_tokens=config.get("max_tokens", 8192),
             system_prompt=config.get("system_prompt", ""),
@@ -189,6 +191,14 @@ class BaseAgent(ABC):
         # 使用传入的timeout，否则使用配置的timeout
         effective_timeout = timeout if timeout is not None else self.config.timeout
 
+        # 发布 LLM 请求事件
+        self._emit_llm_event(EventType.LLM_REQUEST, {
+            "agent_name": self._name,
+            "provider": self._llm_provider,
+            "model": self._llm_model,
+            "prompt_length": len(prompt),
+        })
+
         try:
             result = self._llm_router.generate(
                 prompt=prompt,
@@ -198,9 +208,23 @@ class BaseAgent(ABC):
                 max_tokens=self._llm_max_tokens,
                 timeout=effective_timeout
             )
+            # 发布 LLM 响应事件
+            self._emit_llm_event(EventType.LLM_RESPONSE, {
+                "agent_name": self._name,
+                "provider": self._llm_provider,
+                "model": self._llm_model,
+                "result_length": len(result) if result else 0,
+            })
             return result
         except Exception as e:
             log_error(f"LLM generate error for {self._name}: {e}")
+            # 发布 LLM 错误事件
+            self._emit_llm_event(EventType.LLM_ERROR, {
+                "agent_name": self._name,
+                "provider": self._llm_provider,
+                "model": self._llm_model,
+                "error": str(e),
+            })
             return None
 
     @property
@@ -250,6 +274,32 @@ class BaseAgent(ABC):
     def _on_initialize(self):
         """初始化回调（子类实现）"""
         pass
+
+    def _emit_llm_event(self, event_type: EventType, payload: Dict[str, Any]) -> None:
+        """发射 LLM 相关事件（异步非阻塞）"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(
+                    event_bus.publish_type(event_type, payload=payload, source=self._name)
+                )
+        except Exception:
+            pass
+
+    def _emit_agent_event(self, event_type: EventType, stage: str = "", progress: float = 0.0) -> None:
+        """发射 Agent 执行事件（异步非阻塞）"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(
+                    event_bus.publish_type(
+                        event_type,
+                        payload={"agent_name": self._name, "stage": stage, "progress": progress},
+                        source=self._name,
+                    )
+                )
+        except Exception:
+            pass
 
     def cleanup(self) -> bool:
         """
@@ -314,7 +364,6 @@ class BaseAgent(ABC):
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        use_llm: bool = True,
         **kwargs
     ) -> Optional[str]:
         """
@@ -323,28 +372,12 @@ class BaseAgent(ABC):
         Args:
             prompt: 提示词
             system_prompt: 系统提示
-            use_llm: 是否使用LLM，False则返回模拟响应
             **kwargs: 其他参数
 
         Returns:
             生成的响应
         """
-        if use_llm:
-            # 使用LLM生成
-            return self._generate_with_llm(prompt, system_prompt)
-
-        # 兼容模式：使用process生成模拟响应
-        message = Message(
-            id=str(uuid.uuid4()),
-            type=MessageType.TEXT,
-            content=prompt,
-            metadata={"system_prompt": system_prompt}
-        )
-
-        response = self.process(message)
-        if response:
-            return response.content
-        return None
+        return self._generate_with_llm(prompt, system_prompt)
 
     def add_message(self, message: Message):
         """

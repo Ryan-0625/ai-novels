@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
 
-from src.deepnovel.utils import log_error, get_logger
+from deepnovel.utils import log_error, get_logger
 
 
 class ConnectionStatus(Enum):

@@ -1,25 +1,36 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import api from '@/services/api'
+import apiV2, { connectSSE, type SSEEvent } from '@/services/api-v2'
 import { logError } from '@/utils/logger'
+import GenerationMonitor from '@/components/GenerationMonitor.vue'
+import AgentActivityFeed from '@/components/AgentActivityFeed.vue'
+import type { ActivityItem } from '@/components/AgentActivityFeed.vue'
 import { Refresh, Loading, SuccessFilled, Warning, CircleCheck, View, Close } from '@element-plus/icons-vue'
 
 // 类型定义
 interface Task {
   task_id: string
-  user_id: string
-  task_type: string
-  genre: string
-  title: string
-  description: string
+  agent_name?: string
+  user_id?: string
+  task_type?: string
+  genre?: string
+  title?: string
+  description?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   progress: number
-  current_stage: string
-  created_at: string
+  current_stage?: string
+  created_at?: string
   started_at?: string
   completed_at?: string
   error?: string
+}
+
+interface CurrentActivity {
+  agentName: string
+  stage: string
+  progress: number
+  timestamp: number
 }
 
 // 状态
@@ -28,11 +39,18 @@ const loading = ref(false)
 const refreshInterval = ref<number>()
 const selectedTask = ref<Task | null>(null)
 
+// SSE 状态
+const sseConnected = ref(false)
+const currentActivity = ref<CurrentActivity | null>(null)
+const llmCall = ref<{ provider: string; model: string; status: 'requesting' | 'streaming' | 'done' | 'error' } | null>(null)
+const activities = ref<ActivityItem[]>([])
+let disconnectSSE: (() => void) | null = null
+
 // 路由
 const router = useRouter()
 
 // 状态颜色映射
-const statusColors = {
+const statusColors: Record<string, string> = {
   pending: '#f59e0b',
   running: '#06b6d4',
   completed: '#10b981',
@@ -41,7 +59,7 @@ const statusColors = {
 }
 
 // 状态文本映射
-const statusText = {
+const statusText: Record<string, string> = {
   pending: '待处理',
   running: '进行中',
   completed: '已完成',
@@ -50,7 +68,7 @@ const statusText = {
 }
 
 // 状态图标映射
-const statusIcons = {
+const statusIcons: Record<string, any> = {
   pending: CircleCheck,
   running: Loading,
   completed: SuccessFilled,
@@ -58,16 +76,16 @@ const statusIcons = {
   cancelled: Close,
 }
 
-// 获取任务列表
+// 获取任务列表（v2 API）
 const fetchTasks = async () => {
   loading.value = true
   try {
-    const response = await api.listTasks()
-    if (response && Array.isArray(response)) {
-      tasks.value = response
-    } else if (response && response.tasks) {
-      tasks.value = response.tasks
-    }
+    const response = await apiV2.listTasks()
+    tasks.value = (response.tasks || []).map((t: any) => ({
+      ...t,
+      status: t.status || 'pending',
+      progress: t.progress || 0,
+    }))
   } catch (error) {
     logError('获取任务列表失败:', error)
   } finally {
@@ -75,21 +93,20 @@ const fetchTasks = async () => {
   }
 }
 
-// 获取任务详细状态
+// 获取任务详细状态（v2 API）
 const fetchTaskStatus = async (taskId: string) => {
   try {
-    const response = await api.getTaskStatus(taskId)
-    return response || null
+    return await apiV2.getTask(taskId)
   } catch (error) {
     logError(`获取任务 ${taskId} 状态失败:`, error)
     return null
   }
 }
 
-// 取消任务
+// 取消任务（v2 API）
 const cancelTask = async (taskId: string) => {
   try {
-    await api.cancelTask(taskId, { task_id: taskId })
+    await apiV2.taskAction(taskId, 'cancel')
     await fetchTasks()
   } catch (error) {
     logError(`取消任务 ${taskId} 失败:`, error)
@@ -106,37 +123,14 @@ const viewTask = (task: Task) => {
 
 // 刷新任务状态
 const refreshStatus = async () => {
-  loading.value = true
-  try {
-    const updatedTasks = await Promise.all(
-      tasks.value.map(async (task) => {
-        if (task.status === 'running') {
-          const status = await fetchTaskStatus(task.task_id)
-          if (status) {
-            return {
-              ...task,
-              progress: status.progress,
-              current_stage: status.current_stage,
-              status: status.status as any,
-            }
-          }
-        }
-        return task
-      })
-    )
-    tasks.value = updatedTasks
-  } catch (error) {
-    logError('刷新任务状态失败:', error)
-  } finally {
-    loading.value = false
-  }
+  await fetchTasks()
 }
 
 // 启动自动刷新
 const startAutoRefresh = () => {
   refreshInterval.value = window.setInterval(() => {
     refreshStatus()
-  }, 3000)
+  }, 5000)
 }
 
 // 清理
@@ -144,12 +138,109 @@ const cleanup = () => {
   if (refreshInterval.value) {
     clearInterval(refreshInterval.value)
   }
+  if (disconnectSSE) {
+    disconnectSSE()
+    disconnectSSE = null
+  }
+}
+
+// SSE 事件处理
+function handleSSEEvent(event: SSEEvent) {
+  const payload = event.payload || {}
+  const agentName = payload.agent_name || event.source || 'unknown'
+
+  switch (event.type) {
+    case 'task.created':
+      fetchTasks()
+      break
+    case 'agent.started':
+    case 'task.started':
+      currentActivity.value = {
+        agentName,
+        stage: payload.stage || '执行中',
+        progress: payload.progress || 0.1,
+        timestamp: Date.now(),
+      }
+      activities.value.push({
+        id: `${agentName}-${Date.now()}`,
+        agentName,
+        stage: payload.stage || '执行中',
+        status: 'running',
+        timestamp: Date.now(),
+      })
+      break
+    case 'llm.request':
+      llmCall.value = {
+        provider: payload.provider || 'ollama',
+        model: payload.model || 'qwen2.5-7b',
+        status: 'requesting',
+      }
+      break
+    case 'llm.response':
+      llmCall.value = {
+        provider: payload.provider || 'ollama',
+        model: payload.model || 'qwen2.5-7b',
+        status: 'done',
+      }
+      break
+    case 'llm.stream.chunk':
+      if (llmCall.value && llmCall.value.status !== 'done') {
+        llmCall.value.status = 'streaming'
+      }
+      break
+    case 'agent.completed':
+    case 'task.completed':
+      currentActivity.value = {
+        agentName,
+        stage: payload.stage || '完成',
+        progress: 1,
+        timestamp: Date.now(),
+      }
+      // 更新对应活动为 completed
+      {
+        const idx = activities.value.findIndex(
+          a => a.agentName === agentName && a.status === 'running'
+        )
+        if (idx >= 0) {
+          activities.value[idx].status = 'completed'
+          activities.value[idx].duration = Date.now() - activities.value[idx].timestamp
+        }
+      }
+      setTimeout(() => {
+        if (currentActivity.value?.agentName === agentName) {
+          currentActivity.value = null
+        }
+        llmCall.value = null
+      }, 2000)
+      fetchTasks()
+      break
+    case 'agent.failed':
+    case 'task.failed':
+      {
+        const idx = activities.value.findIndex(
+          a => a.agentName === agentName && a.status === 'running'
+        )
+        if (idx >= 0) {
+          activities.value[idx].status = 'failed'
+          activities.value[idx].duration = Date.now() - activities.value[idx].timestamp
+          activities.value[idx].details = { error: payload.error || '未知错误' }
+        }
+      }
+      llmCall.value = null
+      fetchTasks()
+      break
+  }
 }
 
 // 生命周期钩子
 onMounted(() => {
   fetchTasks()
   startAutoRefresh()
+  disconnectSSE = connectSSE(
+    handleSSEEvent,
+    () => { sseConnected.value = false },
+    () => { sseConnected.value = true },
+  )
 })
 
 onUnmounted(() => {
@@ -164,31 +255,31 @@ const failedTasks = computed(() => tasks.value.filter(t => t.status === 'failed'
 
 // 统计卡片数据
 const statCards = computed(() => [
-  { 
-    label: '待处理', 
-    value: pendingTasks.value.length, 
-    icon: CircleCheck, 
+  {
+    label: '待处理',
+    value: pendingTasks.value.length,
+    icon: CircleCheck,
     color: '#f59e0b',
     bgColor: 'rgba(245, 158, 11, 0.15)'
   },
-  { 
-    label: '进行中', 
-    value: runningTasks.value.length, 
-    icon: Loading, 
+  {
+    label: '进行中',
+    value: runningTasks.value.length,
+    icon: Loading,
     color: '#06b6d4',
     bgColor: 'rgba(6, 182, 212, 0.15)'
   },
-  { 
-    label: '已完成', 
-    value: completedTasks.value.length, 
-    icon: SuccessFilled, 
+  {
+    label: '已完成',
+    value: completedTasks.value.length,
+    icon: SuccessFilled,
     color: '#10b981',
     bgColor: 'rgba(16, 185, 129, 0.15)'
   },
-  { 
-    label: '失败', 
-    value: failedTasks.value.length, 
-    icon: Warning, 
+  {
+    label: '失败',
+    value: failedTasks.value.length,
+    icon: Warning,
     color: '#ef4444',
     bgColor: 'rgba(239, 68, 68, 0.15)'
   },
@@ -237,6 +328,21 @@ const statCards = computed(() => [
           <div class="stat-label">{{ card.label }}</div>
         </div>
         <div class="stat-glow" :style="{ background: card.color }"></div>
+      </div>
+    </div>
+
+    <!-- 实时监控面板 -->
+    <div class="monitor-grid animate-fade-in" style="animation-delay: 0.25s">
+      <div class="monitor-col">
+        <GenerationMonitor
+          :is-connected="sseConnected"
+          :current-activity="currentActivity"
+          :llm-call="llmCall"
+          recent-output=""
+        />
+      </div>
+      <div class="monitor-col">
+        <AgentActivityFeed :activities="activities" />
       </div>
     </div>
 
@@ -376,6 +482,19 @@ export default {
 .task-monitor-view {
   max-width: 1400px;
   margin: 0 auto;
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1024px) {
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Animations */

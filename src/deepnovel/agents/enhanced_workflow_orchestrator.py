@@ -19,17 +19,17 @@ from enum import Enum
 from datetime import datetime
 import threading
 
-from src.deepnovel.utils import log_error, log_info, log_warn, get_logger
-from src.deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
-from src.deepnovel.agents.workflow_orchestrator import (
+from deepnovel.utils import log_error, log_info, log_warn, get_logger
+from deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
+from deepnovel.agents.workflow_orchestrator import (
     WorkflowOrchestrator, WorkflowTask, WorkflowStage, 
     WorkflowDefinition, TaskState, HandoffType, TaskComment
 )
-from src.deepnovel.agents.enhanced_communicator import (
+from deepnovel.agents.enhanced_communicator import (
     EnhancedAgentCommunicator, MessageEnvelope, MessagePriority,
     Conversation, create_enhanced_communicator
 )
-from src.deepnovel.core.context_manager import (
+from deepnovel.core.context_manager import (
     ContextManager, ContextScope, ContextPriority,
     shared_context_pool, create_context_manager
 )
