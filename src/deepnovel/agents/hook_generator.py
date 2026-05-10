@@ -18,7 +18,7 @@ import hashlib
 from .base import BaseAgent, AgentConfig, Message, MessageType
 from ..vector_store.base import BaseVectorStore
 from ..vector_store.chroma_store import ChromaVectorStore
-from src.deepnovel.utils import log_error
+from deepnovel.utils import log_error
 
 
 class HookType(Enum):
@@ -188,7 +188,7 @@ class HookGeneratorAgent(BaseAgent):
         elif "chapter" in content and "state" in content:
             return self._handle_get_state(message)
 
-        return self._handle_general_request(message)
+        return self._handle_generate_hook(message)
 
     def _handle_generate_hook(self, message: Message) -> Message:
         """处理生成钩子请求"""
@@ -660,11 +660,19 @@ class HookGeneratorAgent(BaseAgent):
         return [f"beat_{len(context) % 100}"]
 
     def _generate_embedding(self, text: str) -> List[float]:
-        """生成文本嵌入（模拟）"""
-        # 简化实现：基于文本生成确定性向量
-        import hashlib
-        h = hashlib.md5(text.encode()).digest()
-        return [float(b % 100) / 100.0 for b in h[:384]]  # 384维向量
+        """生成文本嵌入（使用 EmbeddingAdapter）"""
+        try:
+            from deepnovel.llm.embedding_adapter import EmbeddingAdapter, EmbeddingConfig
+            adapter = EmbeddingAdapter(EmbeddingConfig(
+                provider="ollama",
+                model="qwen2.5",
+                dimension=768,
+                normalize=True,
+            ))
+            return adapter.embed(text)
+        except Exception:
+            # 如果 EmbeddingAdapter 不可用，返回空向量（而非模拟数据）
+            return []
 
     def _similarity_search(self, query_vector: List[float], top_k: int = 5) -> List[tuple]:
         """相似度搜索（简化实现）"""

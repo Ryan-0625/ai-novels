@@ -8,9 +8,10 @@ Agent基类测试
 import pytest
 import time
 import uuid
+from typing import Optional
 from unittest.mock import Mock, patch, MagicMock
 
-from src.deepnovel.agents.base import (
+from deepnovel.agents.base import (
     AgentState, MessageType, Message, AgentConfig,
     BaseAgent, AgentRouter
 )
@@ -169,7 +170,7 @@ class TestAgentConfig:
         assert config.name == "test-agent"
         assert config.description == ""
         assert config.provider == "ollama"
-        assert config.model == "qwen2.5-14b"
+        assert config.model == "qwen2.5-7b"
         assert config.temperature == 0.7
         assert config.max_tokens == 8192
         assert config.system_prompt == ""
@@ -206,7 +207,7 @@ class TestAgentConfig:
     
     def test_agent_config_from_config_none(self):
         """测试从None配置创建AgentConfig使用全局设置"""
-        with patch('src.deepnovel.agents.base.settings') as mock_settings:
+        with patch('deepnovel.agents.base.settings') as mock_settings:
             mock_settings.get_agent.return_value = {
                 "provider": "gemini",
                 "model": "gemini-pro"
@@ -233,6 +234,9 @@ class MockAgent(BaseAgent):
             content=f"Processed: {message.content}",
             sender=self.name
         )
+
+    def _generate_with_llm(self, prompt: str, system_prompt: str = None) -> Optional[str]:
+        return f"LLM generated: {prompt}"
 
 
 class TestBaseAgent:
@@ -370,15 +374,15 @@ class TestBaseAgent:
         assert "Processed: Hello" in result.content
         assert result.sender == "test-agent"
     
-    def test_base_agent_generate_response_without_llm(self):
-        """测试BaseAgent不使用LLM生成响应"""
+    def test_base_agent_generate_response(self):
+        """测试BaseAgent使用LLM生成响应"""
         config = AgentConfig(name="test-agent")
         agent = MockAgent(config)
-        
-        result = agent.generate_response("Test prompt", use_llm=False)
-        
+
+        result = agent.generate_response("Test prompt")
+
         assert isinstance(result, str)
-        assert "Processed: Test prompt" in result
+        assert "LLM generated: Test prompt" in result
     
     def test_base_agent_health_check(self):
         """测试BaseAgent健康检查"""

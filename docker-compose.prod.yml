@@ -1,0 +1,62 @@
+version: "3.8"
+
+# AI-Novels 生产环境编排 (Step 15)
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ai-novels-backend
+    ports:
+      - "8004:8004"
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=${DATABASE_URL:-postgresql://user:pass@postgres:5432/ai_novels}
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - ai-novels-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ai-novels-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ai-novels-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-novels-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_novels}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - ai-novels-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-novels-redis
+    restart: unless-stopped
+    networks:
+      - ai-novels-net
+
+volumes:
+  postgres_data:
+
+networks:
+  ai-novels-net:
+    driver: bridge

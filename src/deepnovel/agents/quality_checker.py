@@ -9,14 +9,13 @@ QualityCheckerAgent - 质量检查智能体
 """
 
 import time
-import re
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 from collections import defaultdict
 
 from .base import BaseAgent, AgentConfig, Message, MessageType
-from src.deepnovel.utils import log_info
+from deepnovel.persistence import get_persistence_manager
 
 
 class CheckType(Enum):
@@ -123,33 +122,28 @@ class QualityCheckerAgent(BaseAgent):
 
         # 检查规则
         self._coherence_rules = [
-            self._check_timeline_consistency,
-            self._check_causal_logic,
-            self._check_transition_smoothing,
+            self._check_coherence_llm,
         ]
 
         self._consistency_rules = [
-            self._check_character_consistency,
-            self._check_setting_consistency,
-            self._check_time_consistency,
+            self._check_consistency_llm,
         ]
 
         self._style_rules = [
-            self._check_vocabulary_level,
-            self._check_sentence_variation,
-            self._check_tone_consistency,
+            self._check_style_llm,
         ]
 
         self._plot_rules = [
-            self._check_pacing,
-            self._check_tension_arc,
-            self._check_climax_placement,
+            self._check_plot_llm,
         ]
 
         # 统计
         self._total_checks_performed = 0
         self._total_issues_found = 0
         self._check_history: List[Dict[str, Any]] = []
+
+        # 缓存章节内容（由 _generate_quality_report 填充）
+        self._chapter_contents: Dict[str, str] = {}
 
     def process(self, message: Message) -> Message:
         """处理消息"""
@@ -173,7 +167,7 @@ class QualityCheckerAgent(BaseAgent):
         elif "fix" in content and "suggestion" in content:
             return self._handle_get_suggestion(message)
 
-        return self._handle_general_request(message)
+        return self._handle_generate_report(message)
 
     def _handle_generate_report(self, message: Message) -> Message:
         """处理生成报告请求"""
@@ -399,7 +393,7 @@ class QualityCheckerAgent(BaseAgent):
         content_id = self._extract_param(content, "content_id", "")
         character_name = self._extract_param(content, "character", "")
 
-        issues = self._check_character_consistency(content_id, character_name)
+        issues = self._check_character_llm(content_id, character_name)
 
         self._issues.extend(issues)
         self._total_checks_performed += 1
@@ -483,6 +477,9 @@ class QualityCheckerAgent(BaseAgent):
         all_issues = []
         check_results = {}
 
+        # 加载章节内容供 LLM 检查使用
+        self._load_chapter_content(content_id, chapters)
+
         # 执行各项检查
         for check_type, rules in [
             (CheckType.COHERENCE, self._coherence_rules),
@@ -517,310 +514,183 @@ class QualityCheckerAgent(BaseAgent):
 
         return report
 
-    def _check_timeline_consistency(
+    def _load_chapter_content(self, content_id: str, chapters: List[str]) -> None:
+        """从数据库加载章节内容供 LLM 检查使用"""
+        self._chapter_contents = {}
+        pm = get_persistence_manager()
+        if not pm.mongodb_client:
+            return
+        try:
+            # 按章节号读取内容
+            for ch in chapters:
+                ch_num = None
+                for prefix in ["chapter_", "Chapter ", "第"]:
+                    if prefix in ch:
+                        digits = "".join(filter(str.isdigit, ch.split(prefix)[-1]))
+                        if digits:
+                            ch_num = int(digits)
+                            break
+                if ch_num is None:
+                    continue
+                cursor = pm.mongodb_client.read(
+                    collection="chapters",
+                    query={"task_id": content_id, "chapter_num": ch_num},
+                    limit=1,
+                )
+                docs = list(cursor) if hasattr(cursor, "__iter__") else [cursor]
+                for doc in docs if isinstance(docs, list) else [docs]:
+                    text = doc.get("content", "") if isinstance(doc, dict) else ""
+                    self._chapter_contents[ch] = text[:3000]
+        except Exception:
+            pass
+
+    def _build_content_section(self) -> str:
+        """构建章节内容文本供 LLM 评估"""
+        if not self._chapter_contents:
+            return ""
+        parts = ["\n\n## 章节内容："]
+        for ch_name, text in self._chapter_contents.items():
+            if text:
+                parts.append(f"\n### {ch_name}\n{text[:2000]}\n")
+        return "".join(parts)
+
+    def _parse_llm_issues(self, llm_response: str, content_id: str, check_type: CheckType) -> List[QualityIssue]:
+        """解析 LLM 返回的 JSON 问题列表"""
+        import json
+        issues = []
+        try:
+            data = json.loads(llm_response)
+            if isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    try:
+                        issues.append(QualityIssue(
+                            issue_id=f"{check_type.value}_{content_id}_{len(issues)}",
+                            issue_type=check_type,
+                            severity=IssueSeverity(item.get("severity", "minor")),
+                            message=item.get("message", ""),
+                            location=item.get("location", content_id),
+                            context=item.get("context", ""),
+                            suggestion=item.get("suggestion", ""),
+                        ))
+                    except (ValueError, KeyError):
+                        continue
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return issues
+
+    def _check_coherence_llm(
         self,
         content_id: str,
         chapters: List[str]
     ) -> List[QualityIssue]:
-        """检查时间线一致性"""
-        issues = []
+        """使用 LLM 检查时间线/因果/过渡连贯性"""
+        prompt = (
+            f"你是一个小说质量评审专家。分析以下章节列表的时间线一致性、因果逻辑和过渡平滑度。\n\n"
+            f"内容ID: {content_id}\n"
+            f"章节数: {len(chapters)}\n"
+            f"章节列表: {', '.join(chapters[:10])}\n"
+            f"{self._build_content_section()}\n"
+            f"以JSON数组格式返回发现的问题，每个问题包含：\n"
+            f"- severity: 严重程度（critical/major/minor/suggestion）\n"
+            f"- message: 问题描述\n"
+            f"- location: 问题位置\n"
+            f"- context: 上下文说明\n"
+            f"- suggestion: 改进建议\n"
+            f"如果没问题返回空数组 []。"
+        )
+        llm_response = self._generate_with_llm(prompt)
+        return self._parse_llm_issues(llm_response, content_id, CheckType.COHERENCE)
 
-        # 检查章节顺序
-        chapter_nums = []
-        for chapter in chapters:
-            match = re.search(r'(\d+)', chapter)
-            if match:
-                chapter_nums.append(int(match.group(1)))
-
-        if len(chapter_nums) > 1:
-            for i in range(len(chapter_nums) - 1):
-                if chapter_nums[i] > chapter_nums[i + 1]:
-                    issues.append(QualityIssue(
-                        issue_id=f"tl_{content_id}_{i}",
-                        issue_type=CheckType.COHERENCE,
-                        severity=IssueSeverity.MAJOR,
-                        message=f"Chapter order issue: Chapter {chapter_nums[i]} before {chapter_nums[i+1]}",
-                        location=f"{content_id}: {chapter_nums[i]} -> {chapter_nums[i+1]}",
-                        context="Chapter sequence should be chronological",
-                        suggestion="Reorder chapters or clarify time jumps"
-                    ))
-
-        return issues
-
-    def _check_causal_logic(
+    def _check_consistency_llm(
         self,
         content_id: str,
         chapters: List[str]
     ) -> List[QualityIssue]:
-        """检查因果逻辑"""
-        issues = []
+        """使用 LLM 检查设定/时间/角色一致性"""
+        prompt = (
+            f"你是一个小说质量评审专家。分析以下章节列表的世界观一致性、时间一致性和设定连贯性。\n\n"
+            f"内容ID: {content_id}\n"
+            f"章节数: {len(chapters)}\n"
+            f"章节列表: {', '.join(chapters[:10])}\n"
+            f"{self._build_content_section()}\n"
+            f"以JSON数组格式返回发现的问题，每个问题包含：\n"
+            f"- severity: 严重程度（critical/major/minor/suggestion）\n"
+            f"- message: 问题描述\n"
+            f"- location: 问题位置\n"
+            f"- context: 上下文说明\n"
+            f"- suggestion: 改进建议\n"
+            f"如果没问题返回空数组 []。"
+        )
+        llm_response = self._generate_with_llm(prompt)
+        return self._parse_llm_issues(llm_response, content_id, CheckType.CONSISTENCY)
 
-        # 检查连续事件的逻辑连接
-        # 简化实现：基于章节数量检查
-        if len(chapters) > 1:
-            # 模拟检测到一些逻辑问题
-            if len(chapters) > 5 and len(chapters) % 2 == 0:
-                issues.append(QualityIssue(
-                    issue_id=f"cl_{content_id}_001",
-                    issue_type=CheckType.COHERENCE,
-                    severity=IssueSeverity.MINOR,
-                    message="Unclear motivation for character actions in later chapters",
-                    location=f"{content_id}: Chapters {len(chapters)//2}-end",
-                    context="Character development may lack consistent motivation",
-                    suggestion="Review character motivations and ensure they evolve naturally"
-                ))
-
-        return issues
-
-    def _check_transition_smoothing(
+    def _check_style_llm(
         self,
         content_id: str,
         chapters: List[str]
     ) -> List[QualityIssue]:
-        """检查过渡平滑度"""
-        issues = []
+        """使用 LLM 检查词汇/句式/语气风格一致性"""
+        prompt = (
+            f"你是一个小说风格评审专家。分析以下章节列表的词汇水平、句式多样性和语气一致性。\n\n"
+            f"内容ID: {content_id}\n"
+            f"章节数: {len(chapters)}\n"
+            f"章节列表: {', '.join(chapters[:10])}\n"
+            f"{self._build_content_section()}\n"
+            f"以JSON数组格式返回发现的问题，每个问题包含：\n"
+            f"- severity: 严重程度（critical/major/minor/suggestion）\n"
+            f"- message: 问题描述\n"
+            f"- location: 问题位置\n"
+            f"- context: 上下文说明\n"
+            f"- suggestion: 改进建议\n"
+            f"如果没问题返回空数组 []。"
+        )
+        llm_response = self._generate_with_llm(prompt)
+        return self._parse_llm_issues(llm_response, content_id, CheckType.STYLE)
 
-        # 检查章节结尾和开头的过渡
-        for i in range(len(chapters) - 1):
-            # 模拟检测到过渡问题
-            if i == 0 and len(chapters) > 3:
-                issues.append(QualityIssue(
-                    issue_id=f"tr_{content_id}_{i}",
-                    issue_type=CheckType.COHERENCE,
-                    severity=IssueSeverity.SUGGESTION,
-                    message="Chapter transition could be smoother",
-                    location=f"{content_id}: Chapters {chapters[i]}-{chapters[i+1]}",
-                    context="Opening chapter sets up world but transitions may feel abrupt",
-                    suggestion="Add bridging paragraphs or gradual scene changes"
-                ))
+    def _check_plot_llm(
+        self,
+        content_id: str,
+        chapters: List[str]
+    ) -> List[QualityIssue]:
+        """使用 LLM 检查节奏/张力/高潮位置等情节质量"""
+        prompt = (
+            f"你是一个小说情节评审专家。分析以下章节列表的叙事节奏、张力弧线和高潮位置。\n\n"
+            f"内容ID: {content_id}\n"
+            f"章节数: {len(chapters)}\n"
+            f"章节列表: {', '.join(chapters[:10])}\n"
+            f"{self._build_content_section()}\n"
+            f"以JSON数组格式返回发现的问题，每个问题包含：\n"
+            f"- severity: 严重程度（critical/major/minor/suggestion）\n"
+            f"- message: 问题描述\n"
+            f"- location: 问题位置\n"
+            f"- context: 上下文说明\n"
+            f"- suggestion: 改进建议\n"
+            f"如果没问题返回空数组 []。"
+        )
+        llm_response = self._generate_with_llm(prompt)
+        return self._parse_llm_issues(llm_response, content_id, CheckType.PLOT)
 
-        return issues
-
-    def _check_character_consistency(
+    def _check_character_llm(
         self,
         content_id: str,
         character_name: str
     ) -> List[QualityIssue]:
-        """检查角色一致性"""
-        issues = []
-
-        if not character_name:
-            return issues
-
-        # 检查角色行为一致性
-        issues.append(QualityIssue(
-            issue_id=f"cc_{content_id}_{character_name[:3]}",
-            issue_type=CheckType.CHARACTER,
-            severity=IssueSeverity.SUGGESTION,
-            message=f"Character behavior may have inconsistencies",
-            location=f"{content_id}: Character arc",
-            context=f"Character '{character_name}' actions across chapters",
-            suggestion="Review character development and ensure consistent behavior patterns"
-        ))
-
-        return issues
-
-    def _check_setting_consistency(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查世界观一致性"""
-        issues = []
-
-        # 检查设定在同一世界中的应用
-        setting_elements = ["magic", "technology", "social_structure", "geography"]
-
-        for element in setting_elements:
-            # 模拟检查
-            issues.append(QualityIssue(
-                issue_id=f"sc_{content_id}_{element}",
-                issue_type=CheckType.SETTING,
-                severity=IssueSeverity.SUGGESTION,
-                message=f"World element '{element}' may need consistency review",
-                location=f"{content_id}: World-building",
-                context=f"Consistency of {element} across chapters",
-                suggestion=f"Ensure {element} rules are applied consistently"
-            ))
-
-        return issues
-
-    def _check_time_consistency(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查时间一致性"""
-        issues = []
-
-        # 检查相对时间描述
-        time_patterns = ["morning", "afternoon", "evening", "night"]
-
-        # 模拟检测
-        if len(chapters) > 2:
-            issues.append(QualityIssue(
-                issue_id=f"tc_{content_id}_001",
-                issue_type=CheckType.CONSISTENCY,
-                severity=IssueSeverity.MINOR,
-                message="Time progression may need clarification",
-                location=f"{content_id}: Timeline",
-                context="Relative time indicators across chapters",
-                suggestion="Use consistent time indicators or clearly mark time jumps"
-            ))
-
-        return issues
-
-    def _check_vocabulary_level(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查词汇水平"""
-        issues = []
-
-        # 模拟词汇检查
-        issues.append(QualityIssue(
-            issue_id=f"vl_{content_id}_001",
-            issue_type=CheckType.STYLE,
-            severity=IssueSeverity.SUGGESTION,
-            message="Vocabulary level varies significantly",
-            location=f"{content_id}: Style",
-            context="Word choice consistency across chapters",
-            suggestion="Maintain consistent vocabulary level appropriate for target audience"
-        ))
-
-        return issues
-
-    def _check_sentence_variation(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查句式变化"""
-        issues = []
-
-        # 检查句式多样性
-        issues.append(QualityIssue(
-            issue_id=f"sv_{content_id}_001",
-            issue_type=CheckType.STYLE,
-            severity=IssueSeverity.MINOR,
-            message="Sentence structure may lack variation",
-            location=f"{content_id}: Sentence patterns",
-            context="Sentence length and structure distribution",
-            suggestion="Vary sentence length for better reading rhythm"
-        ))
-
-        return issues
-
-    def _check_tone_consistency(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查语气一致性"""
-        issues = []
-
-        # 检查整体语气
-        if len(chapters) > 1:
-            issues.append(QualityIssue(
-                issue_id=f"tc_{content_id}_002",
-                issue_type=CheckType.STYLE,
-                severity=IssueSeverity.SUGGESTION,
-                message="Narrative tone may shift unexpectedly",
-                location=f"{content_id}: Tone",
-                context="Overall narrative tone throughout story",
-                suggestion="Maintain consistent narrative voice and tone"
-            ))
-
-        return issues
-
-    def _check_pacing(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查节奏"""
-        issues = []
-
-        # 检查节奏分布
-        if len(chapters) > 3:
-            issues.append(QualityIssue(
-                issue_id=f"pc_{content_id}_001",
-                issue_type=CheckType.PACING,
-                severity=IssueSeverity.MINOR,
-                message="Pacing may be uneven across story",
-                location=f"{content_id}: Overall pacing",
-                context="Distribution of action and exposition",
-                suggestion="Review chapter lengths and content balance"
-            ))
-
-        return issues
-
-    def _check_tension_arc(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查张力弧线"""
-        issues = []
-
-        # 检查张力累积
-        if len(chapters) > 5:
-            issues.append(QualityIssue(
-                issue_id=f"ta_{content_id}_001",
-                issue_type=CheckType.PLOT,
-                severity=IssueSeverity.SUGGESTION,
-                message="Tension arc could be more pronounced",
-                location=f"{content_id}: Story arc",
-                context="Build-up and release of tension",
-                suggestion="Ensure clear escalation of story stakes"
-            ))
-
-        return issues
-
-    def _check_climax_placement(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查高潮位置"""
-        issues = []
-
-        # 检查高潮是否在合适位置（通常在75-90%）
-        if len(chapters) > 4:
-            # 模拟检查
-            issues.append(QualityIssue(
-                issue_id=f"cp_{content_id}_001",
-                issue_type=CheckType.PLOT,
-                severity=IssueSeverity.MAJOR,
-                message="Climax may not be optimally placed",
-                location=f"{content_id}: Story structure",
-                context="高潮位置应在故事的75-90%处",
-                suggestion="Consider moving major turning points to later chapters"
-            ))
-
-        return issues
-
-    def _check_character_behavior(
-        self,
-        content_id: str,
-        chapters: List[str]
-    ) -> List[QualityIssue]:
-        """检查角色行为"""
-        issues = []
-
-        # 模拟角色检查
-        issues.append(QualityIssue(
-            issue_id=f"cb_{content_id}_001",
-            issue_type=CheckType.CHARACTER,
-            severity=IssueSeverity.MINOR,
-            message="Character decisions may lack motivation",
-            location=f"{content_id}: Character actions",
-            context="Character actions in key scenes",
-            suggestion="Ensure character decisions are foreshadowed and justified"
-        ))
-
-        return issues
+        """使用 LLM 检查角色一致性和行为合理性"""
+        prompt = (
+            f"你是一个小说角色评审专家。分析角色 '{character_name}' 的行为一致性和角色发展。\n\n"
+            f"内容ID: {content_id}\n\n"
+            f"以JSON数组格式返回发现的问题，每个问题包含：\n"
+            f"- severity: 严重程度（critical/major/minor/suggestion）\n"
+            f"- message: 问题描述\n"
+            f"- location: 问题位置\n"
+            f"- context: 上下文说明\n"
+            f"- suggestion: 改进建议\n"
+            f"如果没问题返回空数组 []。"
+        )
+        llm_response = self._generate_with_llm(prompt)
+        return self._parse_llm_issues(llm_response, content_id, CheckType.CHARACTER)
 
     def _get_severity_distribution(self, issues: List[QualityIssue]) -> Dict[str, int]:
         """获取严重程度分布"""
@@ -989,16 +859,3 @@ class QualityCheckerAgent(BaseAgent):
         self._total_checks_performed = 0
         self._total_issues_found = 0
         self._check_history.clear()
-
-
-if __name__ == "__main__":
-    # 简单测试
-    agent = QualityCheckerAgent()
-
-    # 模拟测试
-    chapters = ["chapter_001", "chapter_002", "chapter_003"]
-    report = agent._generate_quality_report("test_content", chapters)
-
-    log_info(f"Report ID: {report.report_id}")
-    log_info(f"Score: {report.overall_score}")
-    log_info(f"Issues: {len(report.issues)}")

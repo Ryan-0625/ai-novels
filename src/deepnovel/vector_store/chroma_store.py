@@ -1,14 +1,14 @@
 """
-ChromaDB 向量存储实现
+chromadb 向量存储实现
 
 @file: vector_store/chroma_store.py
 @date: 2026-03-16
 @version: 1.0
-@description: ChromaDB 向量数据库客户端实现
+@description: chromadb 向量数据库客户端实现
 """
 
 import time
-import ChromaDB
+import chromadb
 from typing import List, Dict, Any, Optional
 
 from .base import BaseVectorStore
@@ -17,9 +17,9 @@ from ..utils import log_info, log_error
 
 class ChromaVectorStore(BaseVectorStore):
     """
-    ChromaDB 向量存储实现
+    chromadb 向量存储实现
 
-    使用 ChromaDB 进行向量相似度搜索和存储
+    使用 chromadb 进行向量相似度搜索和存储
     """
 
     def __init__(
@@ -39,14 +39,14 @@ class ChromaVectorStore(BaseVectorStore):
         self.collection_name = collection_name
         self.embedding_model = embedding_model
         self.persist_path = persist_path
-        self._client: Optional[ChromaDB.Client] = None
+        self._client: Optional[chromadb.Client] = None
         self._collection = None
         self._connected = False
 
     def connect(self) -> bool:
         """建立数据库连接"""
         try:
-            self._client = ChromaDB.Client(
+            self._client = chromadb.Client(
                 persist_directory=self.persist_path
             )
             self._collection = self._client.get_or_create_collection(
@@ -54,10 +54,10 @@ class ChromaVectorStore(BaseVectorStore):
                 metadata={"hnsw:space": "cosine"}
             )
             self._connected = True
-            log_info(f"Connected to ChromaDB collection: {self.collection_name}")
+            log_info(f"Connected to chromadb collection: {self.collection_name}")
             return True
         except Exception as e:
-            log_error(f"Failed to connect to ChromaDB: {e}")
+            log_error(f"Failed to connect to chromadb: {e}")
             return False
 
     def disconnect(self) -> bool:
@@ -68,10 +68,10 @@ class ChromaVectorStore(BaseVectorStore):
                 self._client = None
                 self._collection = None
                 self._connected = False
-                log_info("Disconnected from ChromaDB")
+                log_info("Disconnected from chromadb")
             return True
         except Exception as e:
-            log_error(f"Failed to disconnect from ChromaDB: {e}")
+            log_error(f"Failed to disconnect from chromadb: {e}")
             return False
 
     def is_connected(self) -> bool:

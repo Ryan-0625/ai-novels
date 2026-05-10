@@ -15,10 +15,10 @@ from enum import Enum
 import threading
 from queue import Queue
 
-from src.deepnovel.messaging.rocketmq_consumer import BaseConsumer, RocketMQConsumer, ConsumerConfig, MessageHandler
-from src.deepnovel.model.message import AgentMessage, MessageType
-from src.deepnovel.agents.agent_communicator import AgentCommunicator
-from src.deepnovel.utils import log_info, log_warn, log_error
+from deepnovel.messaging.rocketmq_consumer import BaseConsumer, RocketMQConsumer, ConsumerConfig, MessageHandler
+from deepnovel.message.message import AgentMessage, MessageType
+from deepnovel.agents.agent_communicator import AgentCommunicator
+from deepnovel.utils import log_info, log_warn, log_error
 
 
 class AgentMessageType(Enum):

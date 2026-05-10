@@ -16,7 +16,7 @@ from collections import defaultdict, deque
 from contextlib import contextmanager
 from enum import Enum
 
-from src.deepnovel.utils import log_info, log_warn, log_error, get_logger
+from deepnovel.utils import log_info, log_warn, log_error, get_logger
 
 
 class MetricType(Enum):
@@ -366,6 +366,11 @@ class PerformanceMonitor:
 
 # 全局监控器实例
 monitor = PerformanceMonitor()
+
+
+def get_performance_monitor() -> PerformanceMonitor:
+    """获取性能监控器实例"""
+    return monitor
 
 
 def timed(name: str, labels: Dict[str, str] = None):

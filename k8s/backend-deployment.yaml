@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-novels-backend
+  labels:
+    app: ai-novels-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-novels-backend
+  template:
+    metadata:
+      labels:
+        app: ai-novels-backend
+    spec:
+      containers:
+        - name: backend
+          image: ai-novels-backend:latest
+          ports:
+            - containerPort: 8004
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-novels-backend
+spec:
+  selector:
+    app: ai-novels-backend
+  ports:
+    - port: 8004
+      targetPort: 8004
+  type: ClusterIP

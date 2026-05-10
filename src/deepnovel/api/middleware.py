@@ -18,8 +18,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from src.deepnovel.utils import get_logger
-from src.deepnovel.core.performance_monitor import get_performance_monitor
+from deepnovel.utils import get_logger
+from deepnovel.core.performance_monitor import get_performance_monitor
 
 logger = get_logger()
 
@@ -120,7 +120,7 @@ class TimingMiddleware(BaseHTTPMiddleware):
         
         # 记录指标
         self.monitor.record_histogram("request_duration", duration)
-        self.monitor.increment_counter(f"requests_{response.status_code}")
+        self.monitor.record_counter(f"requests_{response.status_code}")
         
         # 添加耗时到响应头
         response.headers["X-Response-Time"] = f"{duration:.3f}s"

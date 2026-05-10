@@ -1,0 +1,372 @@
+# ============================================================
+# docker-compose.yml — DeepNovel 服务编排
+# 支持 Profile 分层启动:
+#   docker compose up -d                    # 仅基础设施
+#   docker compose --profile app up -d      # 基础设施 + 应用
+#   docker compose --profile dev up -d      # 含开发工具
+#   docker compose --profile monitoring up -d  # 含监控栈
+# ============================================================
+
+name: deepnovel
+
+x-common-security: &common-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-common-logging: &common-logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "100m"
+      max-file: "5"
+      tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+x-common-restart: &common-restart
+  restart: unless-stopped
+
+services:
+  # ─────────────────────────────────────────────
+  # 应用层
+  # ─────────────────────────────────────────────
+
+  ai-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai
+      target: production
+      args:
+        - APP_UID=1000
+        - APP_GID=1000
+    image: deepnovel-ai:latest
+    container_name: deepnovel-ai
+    <<: [*common-security, *common-logging, *common-restart]
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    environment:
+      - APP_ENV=production
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    env_file:
+      - config/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      neo4j:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      chromadb:
+        condition: service_started
+    networks:
+      - deepnovel
+    profiles:
+      - app
+      - full
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+  # ─────────────────────────────────────────────
+  # 现有数据层 (Step1迁移前保留)
+  # ─────────────────────────────────────────────
+
+  mysql:
+    image: mysql:8.0.40
+    container_name: deepnovel-mysql
+    <<: [*common-security, *common-logging, *common-restart]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-deepnovel_root}
+      MYSQL_DATABASE: ai_novels
+      MYSQL_USER: ${MYSQL_USER:-deepnovel}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-deepnovel_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./config/init/mysql_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-deepnovel_root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  neo4j:
+    image: neo4j:5.23.0-community
+    container_name: deepnovel-neo4j
+    <<: [*common-security, *common-logging, *common-restart]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-deepnovel_neo4j}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_memory_heap_initial__size: 512m
+      NEO4J_dbms_memory_heap_max__size: 2g
+      NEO4J_dbms_default__listen__address: 0.0.0.0
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${NEO4J_PASSWORD:-deepnovel_neo4j}' 'RETURN 1' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+
+  mongodb:
+    image: mongo:7.0.14
+    container_name: deepnovel-mongodb
+    <<: [*common-security, *common-logging, *common-restart]
+    environment:
+      MONGO_INITDB_DATABASE: ai_novels
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./config/init/mongodb_init.js:/docker-entrypoint-initdb.d/init.js:ro
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping: 1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 3G
+
+  chromadb:
+    image: chromadb/chroma:0.5.23
+    container_name: deepnovel-chromadb
+    <<: [*common-security, *common-logging, *common-restart]
+    environment:
+      ANONYMIZED_TELEMETRY: "false"
+      IS_PERSISTENT: "true"
+      PERSIST_DIRECTORY: /chroma
+      ALLOW_RESET: "true"
+    ports:
+      - "8001:8000"
+    volumes:
+      - chromadb_data:/chroma
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # ─────────────────────────────────────────────
+  # 新数据层 (Step1迁移目标)
+  # ─────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: deepnovel-postgres
+    <<: [*common-security, *common-logging, *common-restart]
+    environment:
+      POSTGRES_DB: deepnovel
+      POSTGRES_USER: ${DB_USER:-deepnovel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-deepnovel_pass}
+      POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-deepnovel}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: deepnovel-redis
+    <<: [*common-security, *common-logging, *common-restart]
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --requirepass ${REDIS_PASSWORD:-deepnovel_redis}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: deepnovel-qdrant
+    <<: [*common-security, *common-logging, *common-restart]
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - deepnovel
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:6333/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+
+  # ─────────────────────────────────────────────
+  # 开发工具层 (profile: dev)
+  # ─────────────────────────────────────────────
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: deepnovel-adminer
+    <<: [*common-logging, *common-restart]
+    profiles:
+      - dev
+      - full
+    ports:
+      - "8081:8080"
+    networks:
+      - deepnovel
+
+  redis-insight:
+    image: redis/redisinsight:2.48.0
+    container_name: deepnovel-redis-insight
+    <<: [*common-logging, *common-restart]
+    profiles:
+      - dev
+      - full
+    ports:
+      - "5540:5540"
+    networks:
+      - deepnovel
+
+  # ─────────────────────────────────────────────
+  # 监控层 (profile: monitoring)
+  # ─────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: deepnovel-prometheus
+    <<: [*common-security, *common-logging, *common-restart]
+    profiles:
+      - monitoring
+      - full
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - deepnovel
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: deepnovel-grafana
+    <<: [*common-security, *common-logging, *common-restart]
+    profiles:
+      - monitoring
+      - full
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - deepnovel
+
+# ─────────────────────────────────────────────
+# 网络与卷
+# ─────────────────────────────────────────────
+
+networks:
+  deepnovel:
+    name: deepnovel
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  mysql_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  chromadb_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

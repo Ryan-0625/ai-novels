@@ -77,6 +77,7 @@ const fetchChapterContent = async (chapterNum: number) => {
     if (response) {
       currentChapter.value = {
         chapter_id: response.chapter_id,
+        chapter_num: chapterNum,
         title: response.title,
         content: response.content,
         word_count: response.word_count,

@@ -8,7 +8,7 @@ MongoDB客户端实现
 @description: MongoDB文档数据库客户端实现，支持CRUD操作和索引管理
 """
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 from pymongo.collection import Collection
 from pymongo.errors import PyMongoError, ConnectionFailure
 from typing import Any, Dict, List, Optional, Union, Tuple
@@ -474,7 +474,7 @@ class MongoDBClient(DatabaseBase, CRUDInterface):
             doc = self._db[collection].find_one_and_update(
                 query,
                 {"$set": updates},
-                return_document=self.pymongoReturnDocument.AFTER if return_new else self.pymongoReturnDocument.BEFORE
+                return_document=ReturnDocument.AFTER if return_new else ReturnDocument.BEFORE
             )
             return self._convert_objectid(doc) if doc else None
         except PyMongoError:

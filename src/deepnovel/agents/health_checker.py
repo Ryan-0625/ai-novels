@@ -111,7 +111,7 @@ class HealthCheckerAgent(BaseAgent):
         elif "reset" in content:
             return self._handle_reset_request(message)
         else:
-            return self._handle_general_request(message)
+            return self._handle_check_request(message)
 
     def _handle_check_request(self, message: Message) -> Message:
         """处理检查请求"""
@@ -122,9 +122,9 @@ class HealthCheckerAgent(BaseAgent):
             return self._check_all_components()
 
         elif "database" in content:
-            return self._check databases()
+            return self._check_databases()
 
-        elif "llm" in content or "llm" in content:
+        elif "llm" in content:
             return self._check_llm()
 
         elif "queue" in content or "rocketmq" in content:
@@ -317,98 +317,95 @@ class HealthCheckerAgent(BaseAgent):
         )
 
     def _check_component(self, name: str, component_type: ComponentType) -> ComponentHealth:
-        """检查单个组件"""
+        """检查单个组件（实际网络/连接检查）"""
         start_time = time.time()
 
+        services = {
+            "mysql":      ("localhost", 3306, "MySQL"),
+            "neo4j":      ("localhost", 7687, "Neo4j"),
+            "mongodb":    ("localhost", 27017, "MongoDB"),
+            "chromadb":   ("localhost", 8000, "ChromaDB"),
+            "rocketmq":   ("localhost", 9876, "RocketMQ"),
+        }
+
         try:
-            # 模拟健康检查
-            # 实际实现应该调用各个组件的health_check方法
-            latency_ms = int((time.time() - start_time) * 1000)
+            details = {}
+            status = HealthStatus.UNHEALTHY
 
-            # 根据组件类型模拟不同的健康状态
-            if name == "mysql":
-                # 模拟MySQL连接
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=50 + latency_ms,
-                    details={"database": "ai_novels", "connections": 5},
-                    last_check=time.time()
-                )
-            elif name == "neo4j":
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=30 + latency_ms,
-                    details={"database": "neo4j", "nodes": 0},
-                    last_check=time.time()
-                )
-            elif name == "mongodb":
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=40 + latency_ms,
-                    details={"database": "ai_novels", "collections": 5},
-                    last_check=time.time()
-                )
-            elif name == "chromadb":
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=20 + latency_ms,
-                    details={"collections": 3},
-                    last_check=time.time()
-                )
-            elif name == "rocketmq":
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=15 + latency_ms,
-                    details={"name_server": "localhost:9876", "brokers": 1},
-                    last_check=time.time()
-                )
+            if name in services:
+                host, port, label = services[name]
+                ok, lat = self._try_tcp_connect(host, port)
+                details = {"host": host, "port": port}
+                if ok:
+                    status = HealthStatus.HEALTHY
+                else:
+                    details["error"] = f"{label} ({host}:{port}) 连接失败"
             elif "ollama" in name:
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=100 + latency_ms,
-                    details={"models": ["qwen2.5"], "version": "latest"},
-                    last_check=time.time()
-                )
+                ok, lat, details = self._try_http_connect("http://localhost:11434/api/tags")
+                status = HealthStatus.HEALTHY if ok else HealthStatus.UNHEALTHY
             elif "openai" in name:
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=200 + latency_ms,
-                    details={"api_version": "v1", "models": ["gpt-4o"]},
-                    last_check=time.time()
-                )
+                import os
+                api_key = os.environ.get("OPENAI_API_KEY", "")
+                if api_key:
+                    ok, lat, details = self._try_http_connect(
+                        "https://api.openai.com/v1/models",
+                        headers={"Authorization": f"Bearer {api_key}"}
+                    )
+                else:
+                    lat = 0
+                    details = {"error": "OPENAI_API_KEY not set"}
+                status = HealthStatus.HEALTHY if ok else HealthStatus.UNHEALTHY
             else:
-                return ComponentHealth(
-                    name=name,
-                    component_type=component_type,
-                    status=HealthStatus.HEALTHY,
-                    latency_ms=50 + latency_ms,
-                    details={},
-                    last_check=time.time()
-                )
+                lat = 0
+                details = {"error": f"Unknown component: {name}"}
 
+            total_latency = lat or int((time.time() - start_time) * 1000)
+            return ComponentHealth(
+                name=name, component_type=component_type, status=status,
+                latency_ms=total_latency, details=details, last_check=time.time()
+            )
         except Exception as e:
             return ComponentHealth(
-                name=name,
-                component_type=component_type,
-                status=HealthStatus.UNHEALTHY,
-                latency_ms=0,
-                details={"error": str(e)},
-                last_check=time.time()
+                name=name, component_type=component_type, status=HealthStatus.UNHEALTHY,
+                latency_ms=int((time.time() - start_time) * 1000),
+                details={"error": str(e)}, last_check=time.time()
             )
+
+    @staticmethod
+    def _try_tcp_connect(host: str, port: int, timeout: int = 3):
+        """尝试TCP端口连接"""
+        import socket, time
+        start = time.time()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            result = sock.connect_ex((host, port))
+            elapsed = int((time.time() - start) * 1000)
+            return result == 0, elapsed
+        finally:
+            sock.close()
+
+    @staticmethod
+    def _try_http_connect(url: str, headers: dict = None, timeout: int = 5):
+        """尝试HTTP连接"""
+        import urllib.request, json, time
+        start = time.time()
+        req = urllib.request.Request(url, headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                elapsed = int((time.time() - start) * 1000)
+                body = resp.read().decode()
+                try:
+                    details = json.loads(body)
+                    if isinstance(details, dict):
+                        pass
+                    details["http_status"] = resp.status
+                except (json.JSONDecodeError, TypeError):
+                    details = {"http_status": resp.status}
+                return True, elapsed, details
+        except Exception as e:
+            elapsed = int((time.time() - start) * 1000)
+            return False, elapsed, {"error": str(e)}
 
     def _calculate_overall_status(self, results: List[ComponentHealth]) -> HealthStatus:
         """计算整体健康状态"""

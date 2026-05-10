@@ -8,11 +8,11 @@ API模块初始化
 """
 
 from .main import app
-from .routes import router
+from .legacy_routes import router
 
 # 兼容性导出
 api_router = router
-from .routes import router
+
 from .controllers import (
     task_controller,
     status_controller,

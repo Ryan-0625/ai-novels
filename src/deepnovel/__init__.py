@@ -2,29 +2,18 @@
 DeepNovel - AI-powered novel generation framework
 
 @file: __init__.py
-@date: 2026-03-12
-@version: 1.0
+@date: 2026-04-29
+@version: 2.0
 @description: Main package initialization
 """
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "AI-Novels Team"
 
-# Import main components
-from src.deepnovel.agents.base import BaseAgent, AgentConfig, AgentState, MessageType, Message
-from src.deepnovel.utils import log_info, log_warn, log_error, log_debug
-from src.deepnovel.services.health_service import get_health_service, HealthService
+# 注意：为避免循环导入，顶层不直接导入深层子模块。
+# 各组件请直接从子模块导入，例如：
+#   from deepnovel.agents.base import BaseAgent
+#   from deepnovel.config import ConfigHub
+#   from deepnovel.core.memory_context import MemoryContext
 
-__all__ = [
-    "BaseAgent",
-    "AgentConfig",
-    "AgentState",
-    "MessageType",
-    "Message",
-    "log_info",
-    "log_warn",
-    "log_error",
-    "log_debug",
-    "get_health_service",
-    "HealthService",
-]
+__all__ = ["__version__", "__author__"]

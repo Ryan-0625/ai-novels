@@ -29,7 +29,7 @@ from weakref import WeakMethod
 
 from ..utils.logger import get_logger
 
-logger = get_logger(__name__)
+logger = get_logger()
 
 
 class EventPriority(Enum):
@@ -192,7 +192,7 @@ HandlerType = Union[
 
 class EventBus:
     """
-    事件总线
+    事件总线（优化版）
     
     实现发布-订阅模式，支持：
     - 同步/异步事件处理
@@ -200,9 +200,17 @@ class EventBus:
     - 事件过滤
     - 一次性订阅
     - 通配符订阅
+    - 批量事件处理（NEW）
+    - 事件统计（NEW）
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        enable_batch: bool = True,
+        batch_size: int = 100,
+        batch_interval: float = 0.05,  # 50ms
+        enable_stats: bool = True
+    ):
         # 处理器映射: event_type -> [(handler, filter, once)]
         self._handlers: Dict[str, List[tuple]] = defaultdict(list)
         # 异步任务集合
@@ -216,6 +224,26 @@ class EventBus:
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         # 处理锁
         self._lock = asyncio.Lock()
+        
+        # 批量事件处理配置
+        self._enable_batch = enable_batch
+        self._batch_size = batch_size
+        self._batch_interval = batch_interval
+        self._batch_queue: List[Event] = []
+        self._batch_lock = asyncio.Lock()
+        self._batch_task: Optional[asyncio.Task] = None
+        self._batch_stop = False
+        
+        # 事件统计
+        self._enable_stats = enable_stats
+        self._stats = {
+            'published': 0,
+            'processed': 0,
+            'batched': 0,
+            'errors': 0,
+            'handlers_called': 0
+        }
+        self._stats_lock = asyncio.Lock()
     
     def subscribe(
         self,
@@ -240,7 +268,7 @@ class EventBus:
         
         for et in types:
             self._handlers[et].append((handler, event_filter, once))
-            logger.debug(f"Handler subscribed to {et}")
+            logger.system(f"Handler subscribed to {et}")
         
         def unsubscribe():
             for et in types:
@@ -248,7 +276,7 @@ class EventBus:
                     (h, f, o) for h, f, o in self._handlers[et]
                     if h != handler
                 ]
-                logger.debug(f"Handler unsubscribed from {et}")
+                logger.system(f"Handler unsubscribed from {et}")
         
         return unsubscribe
     
@@ -281,14 +309,71 @@ class EventBus:
             return handler
         return decorator
     
-    async def publish(self, event: Event, wait: bool = False) -> None:
+    async def publish(self, event: Event, wait: bool = False, batch: bool = False) -> None:
         """
-        发布事件
+        发布事件（支持批量处理）
         
         Args:
             event: 要发布的事件
             wait: 是否等待所有处理器完成
+            batch: 是否使用批量处理（高吞吐量场景）
         """
+        # 更新统计
+        if self._enable_stats:
+            async with self._stats_lock:
+                self._stats['published'] += 1
+        
+        # 批量处理模式
+        if batch and self._enable_batch:
+            await self._add_to_batch(event)
+            return
+        
+        # 立即处理
+        await self._process_event(event, wait)
+    
+    async def _add_to_batch(self, event: Event):
+        """添加事件到批处理队列"""
+        async with self._batch_lock:
+            self._batch_queue.append(event)
+            
+            # 启动批处理任务
+            if self._batch_task is None or self._batch_task.done():
+                self._batch_task = asyncio.create_task(self._batch_processor())
+            
+            # 如果队列已满，立即刷新
+            if len(self._batch_queue) >= self._batch_size:
+                await self._flush_batch()
+    
+    async def _batch_processor(self):
+        """批处理后台任务"""
+        while not self._batch_stop:
+            await asyncio.sleep(self._batch_interval)
+            async with self._batch_lock:
+                if self._batch_queue:
+                    await self._flush_batch()
+    
+    async def _flush_batch(self):
+        """刷新批处理队列"""
+        if not self._batch_queue:
+            return
+        
+        # 复制队列并清空
+        batch = self._batch_queue[:]
+        self._batch_queue.clear()
+        
+        # 批量处理事件
+        tasks = []
+        for event in batch:
+            tasks.append(self._process_event(event, wait=False))
+        
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        if self._enable_stats:
+            async with self._stats_lock:
+                self._stats['batched'] += len(batch)
+    
+    async def _process_event(self, event: Event, wait: bool = False):
+        """处理单个事件"""
         # 记录历史
         self._history.append(event)
         if len(self._history) > self._history_size:
@@ -298,7 +383,7 @@ class EventBus:
         handlers = self._get_matching_handlers(event)
         
         if not handlers:
-            logger.debug(f"No handlers for event {event.type}")
+            logger.system(f"No handlers for event {event.type}")
             return
         
         # 执行处理器
@@ -308,8 +393,16 @@ class EventBus:
             if isinstance(task, asyncio.Task):
                 tasks.append(task)
         
+        if self._enable_stats:
+            async with self._stats_lock:
+                self._stats['handlers_called'] += len(handlers)
+        
         if wait and tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        
+        if self._enable_stats:
+            async with self._stats_lock:
+                self._stats['processed'] += 1
     
     async def publish_type(
         self,
@@ -319,6 +412,7 @@ class EventBus:
         correlation_id: Optional[str] = None,
         priority: EventPriority = EventPriority.NORMAL,
         wait: bool = False,
+        batch: bool = False,
     ) -> None:
         """便捷方法：按类型发布事件"""
         event = Event(
@@ -328,7 +422,59 @@ class EventBus:
             correlation_id=correlation_id,
             priority=priority,
         )
-        await self.publish(event, wait)
+        await self.publish(event, wait, batch)
+    
+    async def publish_batch(self, events: List[Event], wait: bool = False) -> int:
+        """
+        批量发布事件
+        
+        Args:
+            events: 事件列表
+            wait: 是否等待所有处理器完成
+            
+        Returns:
+            发布的事件数量
+        """
+        tasks = []
+        for event in events:
+            tasks.append(self._process_event(event, wait=False))
+        
+        if wait:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
+        if self._enable_stats:
+            async with self._stats_lock:
+                self._stats['batched'] += len(events)
+        
+        return len(events)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取事件统计信息"""
+        if not self._enable_stats:
+            return {'enabled': False}
+        
+        return {
+            'enabled': True,
+            'published': self._stats['published'],
+            'processed': self._stats['processed'],
+            'batched': self._stats['batched'],
+            'errors': self._stats['errors'],
+            'handlers_called': self._stats['handlers_called'],
+            'batch_queue_size': len(self._batch_queue),
+            'handlers_count': sum(len(h) for h in self._handlers.values()),
+            'history_size': len(self._history)
+        }
+    
+    def reset_stats(self):
+        """重置统计信息"""
+        if self._enable_stats:
+            self._stats = {
+                'published': 0,
+                'processed': 0,
+                'batched': 0,
+                'errors': 0,
+                'handlers_called': 0
+            }
     
     def _get_matching_handlers(
         self, event: Event
@@ -382,7 +528,7 @@ class EventBus:
             return task
             
         except Exception as e:
-            logger.error(f"Error executing handler for {event.type}: {e}")
+            logger.system(f"Error executing handler for {event.type}: {e}")
             return None
     
     def _normalize_types(
@@ -455,8 +601,20 @@ class EventBus:
 class PersistentEventBus(EventBus):
     """持久化事件总线 - 将事件持久化存储"""
     
-    def __init__(self, storage_path: Optional[str] = None):
-        super().__init__()
+    def __init__(
+        self, 
+        storage_path: Optional[str] = None,
+        enable_batch: bool = True,
+        batch_size: int = 100,
+        batch_interval: float = 0.05,
+        enable_stats: bool = True
+    ):
+        super().__init__(
+            enable_batch=enable_batch,
+            batch_size=batch_size,
+            batch_interval=batch_interval,
+            enable_stats=enable_stats
+        )
         self.storage_path = storage_path
         self._persistent_events: List[Event] = []
     

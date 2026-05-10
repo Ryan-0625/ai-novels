@@ -16,8 +16,8 @@ from enum import Enum
 from datetime import datetime
 
 from .base import BaseAgent, AgentConfig, Message, MessageType
-from src.deepnovel.persistence import get_persistence_manager
-from src.deepnovel.persistence.agent_persist import OutlinePersistence
+from deepnovel.persistence import get_persistence_manager
+from deepnovel.persistence.agent_persist import OutlinePersistence
 
 
 class OutlinePhase(Enum):
@@ -106,7 +106,7 @@ class OutlinePlannerAgent(BaseAgent):
         elif "status" in content:
             return self._handle_status_request(message)
         else:
-            return self._handle_general_request(message)
+            return self._handle_plan_request(message)
 
     def _get_task_id_from_message(self, message: Message) -> str:
         """从消息中获取任务ID"""

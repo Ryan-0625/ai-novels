@@ -7,12 +7,24 @@ Agent持久化工具类
 @description: 为各个Agent提供数据持久化支持
 """
 
-import uuid
+import os
 import json
+import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from .manager import get_persistence_manager, PersistenceManager
+
+_OUTPUT_DIR = "output"
+
+def _file_fallback(subdir: str, task_id: str, filename: str, data: dict) -> str:
+    """当数据库不可用时的文件回退保存"""
+    dirpath = os.path.join(_OUTPUT_DIR, subdir, task_id)
+    os.makedirs(dirpath, exist_ok=True)
+    filepath = os.path.join(dirpath, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return f"file::{filepath}"
 
 
 class CharacterPersistence:
@@ -42,7 +54,16 @@ class CharacterPersistence:
             MongoDB插入的ID
         """
         if not pm.mongodb_client or not pm.neo4j_client:
-            return None
+            # Fallback: 保存到文件
+            char_id = f"char_{uuid.uuid4().hex[:8]}"
+            return _file_fallback("characters", task_id, f"{name}.json", {
+                "char_id": char_id,
+                "task_id": task_id,
+                "name": name,
+                "char_type": char_type,
+                "data": character_data,
+                "created_at": datetime.utcnow().isoformat(),
+            })
 
         try:
             # 1. 生成唯一ID
@@ -159,7 +180,14 @@ class WorldPersistence:
     ) -> Optional[str]:
         """保存地点到MongoDB并创建Neo4j节点"""
         if not pm.mongodb_client or not pm.neo4j_client:
-            return None
+            # Fallback: 保存到文件
+            loc_id = f"loc_{uuid.uuid4().hex[:8]}"
+            return _file_fallback("locations", task_id, f"{location_data.get('name', 'unknown')}.json", {
+                "loc_id": loc_id,
+                "task_id": task_id,
+                **location_data,
+                "created_at": datetime.utcnow().isoformat(),
+            })
 
         try:
             loc_id = f"loc_{uuid.uuid4().hex[:8]}"
@@ -217,7 +245,14 @@ class WorldPersistence:
     ) -> Optional[str]:
         """保存势力到MongoDB并创建Neo4j节点"""
         if not pm.mongodb_client or not pm.neo4j_client:
-            return None
+            # Fallback: 保存到文件
+            fact_id = f"fact_{uuid.uuid4().hex[:8]}"
+            return _file_fallback("factions", task_id, f"{faction_data.get('name', 'unknown')}.json", {
+                "fact_id": fact_id,
+                "task_id": task_id,
+                **faction_data,
+                "created_at": datetime.utcnow().isoformat(),
+            })
 
         try:
             fact_id = f"fact_{uuid.uuid4().hex[:8]}"
@@ -279,7 +314,15 @@ class OutlinePersistence:
     ) -> Optional[str]:
         """保存章节大纲"""
         if not pm.mongodb_client or not pm.neo4j_client:
-            return None
+            # Fallback: 保存到文件
+            outline_id = f"outline_{chapter_num}_{uuid.uuid4().hex[:8]}"
+            return _file_fallback("outlines", task_id, f"chapter_{chapter_num}_outline.json", {
+                "outline_id": outline_id,
+                "task_id": task_id,
+                "chapter_num": chapter_num,
+                **outline_data,
+                "created_at": datetime.utcnow().isoformat(),
+            })
 
         try:
             outline_id = f"outline_{chapter_num}_{uuid.uuid4().hex[:4]}"
@@ -358,7 +401,19 @@ class ChapterPersistence:
             MongoDB插入的ID
         """
         if not pm.mongodb_client:
-            return None
+            # Fallback: 保存到文件
+            chapter_id = f"chapter_{chapter_num}_{uuid.uuid4().hex[:8]}"
+            _file_fallback("chapters", task_id, f"chapter_{chapter_num}.json", {
+                "chapter_id": chapter_id,
+                "task_id": task_id,
+                "chapter_num": chapter_num,
+                "title": title,
+                "content": content,
+                "word_count": word_count,
+                **(extra_data or {}),
+                "created_at": datetime.utcnow().isoformat(),
+            })
+            return chapter_id
 
         try:
             chapter_id = f"chapter_{chapter_num}_{uuid.uuid4().hex[:8]}"
@@ -421,7 +476,15 @@ class QualityReportPersistence:
     ) -> Optional[str]:
         """保存质量报告"""
         if not pm.mongodb_client:
-            return None
+            # Fallback: 保存到文件
+            report_id = f"quality_{uuid.uuid4().hex[:8]}"
+            _file_fallback("reports", task_id, f"{report_id}.json", {
+                "report_id": report_id,
+                "task_id": task_id,
+                "data": report_data,
+                "created_at": datetime.utcnow().isoformat(),
+            })
+            return report_id
 
         try:
             report_id = f"quality_{uuid.uuid4().hex[:8]}"
@@ -466,3 +529,92 @@ def save_chapter_to_db(
     """便捷函数：保存章节"""
     pm = get_persistence_manager()
     return ChapterPersistence.save_chapter(pm, task_id, chapter_num, title, content, word_count, extra_data)
+
+
+class TaskPersistence:
+    """任务状态持久化"""
+
+    COLLECTION = "tasks"
+
+    @staticmethod
+    def save_task(
+        pm: PersistenceManager,
+        task_id: str,
+        task_data: Dict[str, Any]
+    ) -> Optional[str]:
+        """保存任务状态到 MongoDB（文件回退）"""
+        if not pm.mongodb_client:
+            return _file_fallback("tasks", task_id, "task.json", {
+                "task_id": task_id,
+                **task_data,
+                "saved_at": datetime.utcnow().isoformat(),
+            })
+        try:
+            doc = {
+                "task_id": task_id,
+                "updated_at": datetime.utcnow(),
+                **task_data,
+            }
+            # 使用 upsert 避免重复
+            return pm.mongodb_client.update(
+                collection=TaskPersistence.COLLECTION,
+                query={"task_id": task_id},
+                updates={"$set": doc},
+                upsert=True,
+            )
+        except Exception as e:
+            print(f"Failed to save task {task_id}: {e}")
+            return _file_fallback("tasks", task_id, "task.json", {
+                "task_id": task_id,
+                **task_data,
+                "saved_at": datetime.utcnow().isoformat(),
+            })
+
+    @staticmethod
+    def load_task(
+        pm: PersistenceManager,
+        task_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """从 MongoDB 加载任务（文件回退）"""
+        if pm.mongodb_client:
+            try:
+                doc = pm.mongodb_client.find_one(
+                    collection=TaskPersistence.COLLECTION,
+                    query={"task_id": task_id},
+                )
+                if doc:
+                    return doc
+            except Exception:
+                pass
+        # 文件回退
+        filepath = os.path.join(_OUTPUT_DIR, "tasks", task_id, "task.json")
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return None
+
+    @staticmethod
+    def list_tasks(
+        pm: PersistenceManager,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """列出最近的任务"""
+        if pm.mongodb_client:
+            try:
+                return list(pm.mongodb_client.read(
+                    collection=TaskPersistence.COLLECTION,
+                    query={},
+                    limit=limit,
+                ))
+            except Exception:
+                pass
+        # 文件回退：扫描 output/tasks/ 目录
+        tasks_dir = os.path.join(_OUTPUT_DIR, "tasks")
+        results = []
+        if os.path.isdir(tasks_dir):
+            for tid in sorted(os.listdir(tasks_dir))[-limit:]:
+                task_file = os.path.join(tasks_dir, tid, "task.json")
+                if os.path.exists(task_file):
+                    with open(task_file, "r", encoding="utf-8") as f:
+                        results.append(json.load(f))
+        return results

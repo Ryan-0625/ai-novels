@@ -19,17 +19,17 @@ from enum import Enum
 from datetime import datetime
 import threading
 
-from src.deepnovel.utils import log_error, log_info, log_warn, get_logger
-from src.deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
-from src.deepnovel.agents.workflow_orchestrator import (
+from deepnovel.utils import log_error, log_info, log_warn, get_logger
+from deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
+from deepnovel.agents.workflow_orchestrator import (
     WorkflowOrchestrator, WorkflowTask, WorkflowStage, 
     WorkflowDefinition, TaskState, HandoffType, TaskComment
 )
-from src.deepnovel.agents.enhanced_communicator import (
+from deepnovel.agents.enhanced_communicator import (
     EnhancedAgentCommunicator, MessageEnvelope, MessagePriority,
     Conversation, create_enhanced_communicator
 )
-from src.deepnovel.core.context_manager import (
+from deepnovel.core.context_manager import (
     ContextManager, ContextScope, ContextPriority,
     shared_context_pool, create_context_manager
 )
@@ -125,7 +125,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
         # 锁
         self._lock = threading.RLock()
         
-        self._logger.info("EnhancedWorkflowOrchestrator initialized")
+        self._logger.agent("EnhancedWorkflowOrchestrator initialized")
     
     def register_agent(
         self,
@@ -164,7 +164,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
                         with self._lock:
                             self._context_managers[agent.name] = context_manager
                     
-                    self._logger.info(f"Enhanced communication enabled for agent: {agent.name}")
+                    self._logger.agent(f"Enhanced communication enabled for agent: {agent.name}")
                     return True
                 else:
                     log_warn(f"Failed to initialize enhanced communicator for {agent.name}")
@@ -197,7 +197,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
         """
         workflow = self._workflows.get(workflow_name)
         if not workflow:
-            self._logger.error(f"Workflow not found: {workflow_name}")
+            self._logger.agent_error(f"Workflow not found: {workflow_name}")
             return None
         
         # 创建会话上下文
@@ -238,7 +238,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
         self._tasks[task.id] = task
         self._task_history.append(task.id)
         
-        self._logger.info(f"Enhanced task created: {task.id} for workflow {workflow_name}")
+        self._logger.agent(f"Enhanced task created: {task.id} for workflow {workflow_name}")
         return task
     
     def execute_task(self, task_id: str) -> bool:
@@ -258,7 +258,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
         workflow_name = task.input_data.get("workflow_name")
         workflow = self._workflows.get(workflow_name)
         if not workflow:
-            self._logger.error(f"Workflow not found: {workflow_name}")
+            self._logger.agent_error(f"Workflow not found: {workflow_name}")
             return False
         
         # 开始执行
@@ -310,7 +310,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
             return success
             
         except Exception as e:
-            self._logger.error(f"Enhanced task execution failed: {e}")
+            self._logger.agent_error(f"Enhanced task execution failed: {e}")
             task.transition_to(TaskState.FAILED, f"执行异常: {str(e)}")
             return False
     
@@ -335,7 +335,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
         """
         agent = self._agents.get(stage.agent_name)
         if not agent:
-            self._logger.error(f"Agent not found: {stage.agent_name}")
+            self._logger.agent_error(f"Agent not found: {stage.agent_name}")
             return False
         
         # 准备输入数据
@@ -788,7 +788,7 @@ class EnhancedWorkflowOrchestrator(WorkflowOrchestrator):
             except Exception as e:
                 log_error(f"Error destroying session context: {e}")
         
-        self._logger.info("EnhancedWorkflowOrchestrator shutdown")
+        self._logger.agent("EnhancedWorkflowOrchestrator shutdown")
 
 
 # 全局实例

@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "description": "Generation configuration template — copy to generation.json and customize",
+  "generation": {
+    "output_dir": "output",
+    "default_word_count": 2000,
+    "max_retries": 3
+  }
+}

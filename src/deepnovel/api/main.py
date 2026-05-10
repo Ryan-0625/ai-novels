@@ -7,13 +7,16 @@ FastAPI应用初始化
 @description: FastAPI应用初始化和路由注册
 """
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.exceptions import RequestValidationError
+import asyncio
+import json
 import os
 import sys
 import traceback
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.exceptions import RequestValidationError
 
 # 添加src目录到路径
 # 使用相对路径以支持 reload 模式下的子进程
@@ -22,13 +25,32 @@ src_dir = os.path.join(cwd, 'src')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from src.deepnovel.agents.coordinator import CoordinatorAgent
-from src.deepnovel.agents.agent_communicator import AgentCommunicator
-from src.deepnovel.model.message import TaskRequest, TaskResponse, TaskStatusUpdate, AgentMessage
-from src.deepnovel.utils import log_info, log_error
+from deepnovel.agents.coordinator import CoordinatorAgent
+from deepnovel.agents.agent_communicator import AgentCommunicator
+from deepnovel.agents.implementations import (
+    HealthCheckerAgent,
+    ConfigEnhancerAgent,
+    OutlinePlannerAgent,
+    CharacterGeneratorAgent,
+    WorldBuilderAgent,
+    ChapterSummaryAgent,
+    HookGeneratorAgent,
+    ConflictGeneratorAgent,
+    ContentGeneratorAgent,
+    QualityCheckerAgent,
+)
+from deepnovel.message.message import TaskRequest, TaskResponse, TaskStatusUpdate, AgentMessage
+from deepnovel.utils import log_info, log_error
 
-# 导入配置管理器
-from src.deepnovel.config.manager import ConfigManager, settings
+# 新版配置系统（ConfigHub）
+from deepnovel.config.hub import ConfigHub, get_config_hub
+
+# 旧版配置系统（向后兼容，Phase 5 后移除）
+from deepnovel.config.manager import ConfigManager, settings
+
+# 新版任务编排器（Step 11）
+from deepnovel.agents.task_orchestrator import TaskOrchestrator
+from deepnovel.core.event_bus import event_bus
 
 # 导入控制器
 from .controllers import (
@@ -38,8 +60,14 @@ from .controllers import (
     health_controller
 )
 
-# 导入路由
-from .routes import router
+# 导入旧版路由
+from .legacy_routes import router
+
+# 可观测性路由（健康检查 + Prometheus 指标）
+from .health_routes import router as health_router
+
+# Step 11: 新版领域路由
+from deepnovel.api.routes import task_router, agent_router, config_router
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -86,34 +114,85 @@ async def startup_event():
     """应用启动时初始化"""
     log_info("AI-Novels API starting...")
 
-    # 初始化配置管理器
+    # 1. 初始化新版 ConfigHub（优先）
+    try:
+        config_hub = get_config_hub()
+        app.state.config_hub = config_hub
+        log_info(f"ConfigHub initialized: {config_hub.config.app_version}")
+    except Exception as e:
+        log_error(f"ConfigHub initialization failed: {e}")
+
+    # 2. 初始化旧版 ConfigManager（从 AppConfig 读取，兼容旧模块）
     config_manager = ConfigManager()
-    config_paths = [
-        "config/system.json",
-        "config/database.json",
-        "config/llm.json",
-        "config/novel_settings.json",
-        "config/agents.json",
-        "config/messaging.json"
-    ]
-
-    # 只加载存在的配置文件
-    existing_paths = [p for p in config_paths if os.path.exists(p)]
-    log_info(f"Loading config files: {existing_paths}")
-
-    if config_manager.initialize(existing_paths):
+    if config_manager.initialize():
         settings.initialize(config_manager)
-        log_info("ConfigManager and settings initialized successfully")
     else:
-        log_error("Failed to initialize ConfigManager")
+        log_error("Failed to initialize legacy ConfigManager")
 
     # 初始化CoordinatorAgent（不启动通信器以避免阻塞）
     app.state.coordinator = CoordinatorAgent()
+
+    # 3. 初始化 TaskOrchestrator（Step 11）并注册核心 Agent workers
+    try:
+        task_orch = TaskOrchestrator(max_workers=4, event_bus=event_bus)
+        await task_orch.start()
+        app.state.task_orchestrator = task_orch
+
+        # 注册核心 Agent 作为 workers（解决"纸老虎"问题）
+        agent_classes = [
+            HealthCheckerAgent,
+            ConfigEnhancerAgent,
+            OutlinePlannerAgent,
+            CharacterGeneratorAgent,
+            WorldBuilderAgent,
+            ChapterSummaryAgent,
+            HookGeneratorAgent,
+            ConflictGeneratorAgent,
+            ContentGeneratorAgent,
+            QualityCheckerAgent,
+        ]
+        registered = 0
+        for agent_cls in agent_classes:
+            try:
+                agent = agent_cls()
+                agent.initialize()
+                if task_orch.register_worker(agent):
+                    registered += 1
+            except Exception as agent_err:
+                log_error(f"Failed to register worker {agent_cls.__name__}: {agent_err}")
+
+        log_info(f"TaskOrchestrator initialized with {registered}/{len(agent_classes)} workers")
+    except Exception as e:
+        log_error(f"TaskOrchestrator initialization failed: {e}")
+        # 创建一个最小可用的 orchestrator 避免路由崩溃
+        app.state.task_orchestrator = None
 
     # 通信器将按需初始化，避免启动时阻塞
     # app.state.communicator = AgentCommunicator("api_server")
     # if hasattr(app.state.coordinator, 'start_communication'):
     #     app.state.coordinator.start_communication()
+
+    # 预热 Ollama 模型（避免首次请求超时）
+    try:
+        import json
+        import urllib.request
+        warmup_data = json.dumps({
+            "model": "qwen2.5-7b",
+            "prompt": "Hello",
+            "stream": False,
+            "options": {"num_predict": 1},
+            "keep_alive": "30m"
+        }).encode()
+        req = urllib.request.Request(
+            "http://localhost:11434/api/generate",
+            data=warmup_data,
+            headers={"Content-Type": "application/json"}
+        )
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=300))
+        log_info("Ollama model warmup completed")
+    except Exception as e:
+        log_error(f"Ollama model warmup failed (non-critical): {e}")
 
     log_info("AI-Novels API started successfully")
 
@@ -128,10 +207,92 @@ async def shutdown_event():
     # if hasattr(app.state, 'coordinator') and hasattr(app.state.coordinator, 'stop_communication'):
     #     app.state.coordinator.stop_communication()
 
+    # 关闭 TaskOrchestrator
+    if hasattr(app.state, 'task_orchestrator') and app.state.task_orchestrator is not None:
+        try:
+            await app.state.task_orchestrator.shutdown()
+            log_info("TaskOrchestrator shutdown")
+        except Exception as e:
+            log_error(f"TaskOrchestrator shutdown error: {e}")
+
     log_info("AI-Novels API shutdown complete")
+
+# SSE 事件流端点 — 桥接 EventBus 到前端
+@app.get("/api/v2/events")
+async def event_stream():
+    """Server-Sent Events 端点 — 实时推送 Agent 执行事件"""
+    from deepnovel.core.event_bus import EventType
+
+    queue: asyncio.Queue = asyncio.Queue()
+    active = True
+
+    def on_event(event):
+        if active:
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                pass
+
+    # 订阅关键事件
+    unsubscribe = event_bus.subscribe(
+        [
+            EventType.TASK_CREATED,
+            EventType.TASK_STARTED,
+            EventType.TASK_COMPLETED,
+            EventType.TASK_FAILED,
+            EventType.TASK_PROGRESS,
+            EventType.AGENT_STARTED,
+            EventType.AGENT_COMPLETED,
+            EventType.AGENT_FAILED,
+            EventType.LLM_STREAM_CHUNK,
+        ],
+        on_event,
+    )
+
+    async def generator():
+        nonlocal active
+        try:
+            # 发送连接成功事件
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE stream connected'}, ensure_ascii=False)}\n\n"
+
+            while active:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    payload = {
+                        "type": event.type,
+                        "source": event.source,
+                        "timestamp": event.timestamp,
+                        "payload": event.payload,
+                    }
+                    yield f"data: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                except asyncio.TimeoutError:
+                    # 发送心跳保持连接
+                    yield f"data: {json.dumps({'type': 'heartbeat'}, ensure_ascii=False)}\n\n"
+        finally:
+            active = False
+            unsubscribe()
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
 
 # 注册路由
 app.include_router(router, prefix="/api/v1")
+
+# Step 11: 新版领域路由（ConfigHub + TaskOrchestrator）
+app.include_router(task_router, prefix="/api/v2")
+app.include_router(agent_router, prefix="/api/v2")
+app.include_router(config_router, prefix="/api/v2")
+
+# 可观测性路由
+app.include_router(health_router, prefix="/api/v2")
 
 # 健康检查
 @app.get("/health")

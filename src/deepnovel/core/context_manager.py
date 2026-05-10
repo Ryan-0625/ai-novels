@@ -19,7 +19,7 @@ from collections import OrderedDict
 import threading
 import copy
 
-from src.deepnovel.utils import log_info, log_error, log_warn, get_logger
+from deepnovel.utils import log_info, log_error, log_warn, get_logger
 
 
 class ContextScope(Enum):
@@ -137,6 +137,7 @@ class ContextManager:
     4. 上下文快照和恢复
     5. 跨Agent上下文传递
     6. 上下文变更监听
+    7. 读取缓存优化（NEW）
     """
     
     def __init__(
@@ -144,7 +145,8 @@ class ContextManager:
         agent_name: str,
         session_id: str = None,
         max_items: int = 1000,
-        cleanup_interval: int = 300
+        cleanup_interval: int = 300,
+        cache_ttl: float = 5.0  # 缓存TTL（秒）
     ):
         """
         初始化上下文管理器
@@ -154,16 +156,22 @@ class ContextManager:
             session_id: 会话ID
             max_items: 最大上下文项数
             cleanup_interval: 清理间隔（秒）
+            cache_ttl: 读取缓存TTL（秒）
         """
         self._agent_name = agent_name
         self._session_id = session_id or str(uuid.uuid4())
         self._max_items = max_items
         self._cleanup_interval = cleanup_interval
+        self._cache_ttl = cache_ttl
         
         # 上下文存储
         self._local_context: OrderedDict[str, ContextItem] = OrderedDict()
         self._shared_context: OrderedDict[str, ContextItem] = OrderedDict()
         self._global_context: OrderedDict[str, ContextItem] = OrderedDict()
+        
+        # 读取缓存 - 优化高频读取性能
+        self._read_cache: Dict[str, tuple] = {}  # key -> (value, timestamp, scope)
+        self._cache_lock = threading.RLock()
         
         # 线程安全
         self._lock = threading.RLock()
@@ -174,6 +182,10 @@ class ContextManager:
         # 快照历史
         self._snapshots: Dict[str, ContextSnapshot] = {}
         self._max_snapshots = 10
+        
+        # 统计信息
+        self._cache_hits = 0
+        self._cache_misses = 0
         
         # 启动清理线程
         self._cleanup_thread: Optional[threading.Thread] = None
@@ -258,6 +270,9 @@ class ContextManager:
             
             storage[key] = item
             
+            # 使该key的缓存失效
+            self._invalidate_cache(key)
+            
             # 通知监听器
             old_val = old_value.value if old_value else None
             self._notify_listeners(key, old_val, value)
@@ -265,29 +280,78 @@ class ContextManager:
             log_info(f"Context set: {key} (scope: {scope.value})")
             return item
     
+    def _get_cache_key(self, key: str, scope: ContextScope = None) -> str:
+        """生成缓存键"""
+        scope_str = scope.value if scope else "any"
+        return f"{scope_str}:{key}"
+    
+    def _get_from_cache(self, cache_key: str) -> tuple:
+        """从缓存获取值，返回(value, is_hit)"""
+        with self._cache_lock:
+            if cache_key in self._read_cache:
+                value, timestamp, scope = self._read_cache[cache_key]
+                if time.time() - timestamp < self._cache_ttl:
+                    self._cache_hits += 1
+                    return value, True
+                else:
+                    # 缓存过期，删除
+                    del self._read_cache[cache_key]
+            self._cache_misses += 1
+            return None, False
+    
+    def _set_to_cache(self, cache_key: str, value: Any, scope: ContextScope):
+        """设置缓存值"""
+        with self._cache_lock:
+            self._read_cache[cache_key] = (value, time.time(), scope)
+    
+    def _invalidate_cache(self, key: str = None):
+        """使缓存失效"""
+        with self._cache_lock:
+            if key is None:
+                self._read_cache.clear()
+            else:
+                # 删除所有作用域的该key缓存
+                for scope in ContextScope:
+                    cache_key = self._get_cache_key(key, scope)
+                    self._read_cache.pop(cache_key, None)
+                # 删除any作用域的缓存
+                self._read_cache.pop(self._get_cache_key(key, None), None)
+    
     def get(
         self,
         key: str,
         default: Any = None,
-        scope: ContextScope = None
+        scope: ContextScope = None,
+        use_cache: bool = True
     ) -> Any:
         """
-        获取上下文项
+        获取上下文项（带缓存优化）
         
         Args:
             key: 键
             default: 默认值
             scope: 指定作用域，None则按优先级查找
+            use_cache: 是否使用读取缓存
             
         Returns:
             值或默认值
         """
+        # 尝试从缓存获取
+        if use_cache:
+            cache_key = self._get_cache_key(key, scope)
+            cached_value, is_hit = self._get_from_cache(cache_key)
+            if is_hit:
+                return cached_value
+        
         with self._lock:
             if scope:
                 storage = self._get_storage(scope)
                 item = storage.get(key)
                 if item and not item.is_expired():
                     item.touch()
+                    # 更新缓存
+                    if use_cache:
+                        self._set_to_cache(cache_key, item.value, scope)
                     return item.value
             else:
                 # 按优先级查找：Local > Shared > Global
@@ -296,6 +360,10 @@ class ContextManager:
                     item = storage.get(key)
                     if item and not item.is_expired():
                         item.touch()
+                        # 更新缓存
+                        if use_cache:
+                            cache_key = self._get_cache_key(key, None)
+                            self._set_to_cache(cache_key, item.value, s)
                         return item.value
             
             return default
@@ -574,8 +642,11 @@ class ContextManager:
             return count
     
     def get_stats(self) -> Dict[str, Any]:
-        """获取统计信息"""
+        """获取统计信息（包含缓存统计）"""
         with self._lock:
+            total_requests = self._cache_hits + self._cache_misses
+            cache_hit_rate = self._cache_hits / total_requests if total_requests > 0 else 0
+            
             return {
                 "session_id": self._session_id,
                 "agent_name": self._agent_name,
@@ -584,7 +655,15 @@ class ContextManager:
                 "global_items": len(self._global_context),
                 "total_items": len(self._local_context) + len(self._shared_context) + len(self._global_context),
                 "snapshots": len(self._snapshots),
-                "max_items": self._max_items
+                "max_items": self._max_items,
+                # 缓存统计
+                "cache": {
+                    "size": len(self._read_cache),
+                    "hits": self._cache_hits,
+                    "misses": self._cache_misses,
+                    "hit_rate": round(cache_hit_rate, 4),
+                    "ttl": self._cache_ttl
+                }
             }
     
     def destroy(self):

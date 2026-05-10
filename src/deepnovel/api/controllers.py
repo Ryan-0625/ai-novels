@@ -36,19 +36,23 @@ logger.setLevel(logging.INFO)
 logger.addHandler(logging.FileHandler('logs/server.log', encoding='utf-8'))
 
 # 导入 HierarchicalLogger 用于分类日志
-from src.deepnovel.utils import get_logger
+from deepnovel.utils import get_logger
 hierarchical_logger = get_logger()
 
 # 导入数据模型
-from src.deepnovel.model.message import TaskRequest, TaskStatusUpdate, TaskResponse
-from src.deepnovel.agents.coordinator import CoordinatorAgent, WorkflowState
-from src.deepnovel.agents.agent_communicator import AgentCommunicator
-from src.deepnovel.config.manager import ConfigManager, settings
-from src.deepnovel.core.llm_router import get_llm_router
-from src.deepnovel.utils import log_info, log_error, get_logger, LogContext
+from deepnovel.message.message import TaskRequest, TaskStatusUpdate, TaskResponse
+from deepnovel.agents.coordinator import CoordinatorAgent, WorkflowState
+from deepnovel.agents.agent_communicator import AgentCommunicator
+from deepnovel.config.manager import ConfigManager, settings
+from deepnovel.core.llm_router import get_llm_router
+from deepnovel.utils import log_info, log_error, get_logger, LogContext
 
 # 导入健康检查服务
-from src.deepnovel.services.health_service import get_health_service, HealthService
+from deepnovel.services.health_service import get_health_service, HealthService
+
+# 导入持久化
+from deepnovel.persistence.agent_persist import TaskPersistence
+from deepnovel.persistence.manager import get_persistence_manager as get_pm
 
 
 class TaskController:
@@ -252,14 +256,18 @@ class TaskController:
 
             # 初始化Coordinator
             coordinator = CoordinatorAgent()
+            # 为可选字段提供默认值
+            chapters = request.chapters or 5
+            word_count = request.word_count_per_chapter or 2000
+            style = request.style or "light"
             # 设置当前任务信息，供Agent获取task_id等参数
             coordinator._current_task = {
                 "task_id": task_id,
                 "title": request.title,
                 "genre": request.genre,
-                "chapters": request.chapters,
-                "word_count_per_chapter": request.word_count_per_chapter,
-                "style": request.style,
+                "chapters": chapters,
+                "word_count_per_chapter": word_count,
+                "style": style,
                 "description": request.description,
                 "user_id": request.user_id
             }
@@ -273,10 +281,10 @@ class TaskController:
                 "intent": "generate_novel",
                 "parameters": {
                     "genre": request.genre,
-                    "length": "long" if request.chapters and request.chapters > 10 else "short",
-                    "style": request.style,
+                    "length": "long" if chapters and chapters > 10 else "short",
+                    "style": style,
                     "theme": request.title,
-                    "chapters": request.chapters,
+                    "chapters": chapters,
                     "word_count_per_chapter": request.word_count_per_chapter,
                 }
             }
@@ -323,9 +331,10 @@ class TaskController:
                     hierarchical_logger.task("Task no next node", task_id=task_id)
                     break
 
-                # 执行节点
+                # 执行节点（在线程池中运行以免阻塞事件循环）
                 logger.info(f"Task {task_id}: Calling coordinator.execute_next_node(), coordinator id={id(coordinator)}")
-                result = coordinator.execute_next_node()
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, coordinator.execute_next_node)
                 logger.info(f"Task {task_id}: execute_next_node result={result}")
                 hierarchical_logger.task("Task execute result", task_id=task_id, result=result)
 
@@ -356,11 +365,24 @@ class TaskController:
                 logger.info(f"Task {task_id} set to completed")
                 hierarchical_logger.task("Task set to completed", task_id=task_id)
 
+            # 持久化保存任务状态
+            try:
+                pm = get_pm()
+                TaskPersistence.save_task(pm, task_id, self._tasks[task_id])
+            except Exception as e:
+                logger.warning(f"Failed to persist task {task_id}: {e}")
+
         except Exception as e:
             logger.error(f"Task {task_id} execution failed: {e}", exc_info=True)
             hierarchical_logger.task_error("Task execution failed", task_id=task_id, error=str(e))
             self._tasks[task_id]["status"] = "failed"
             self._tasks[task_id]["error"] = str(e)
+            # 持久化保存失败状态
+            try:
+                pm = get_pm()
+                TaskPersistence.save_task(pm, task_id, self._tasks[task_id])
+            except Exception as e2:
+                logger.warning(f"Failed to persist failed task {task_id}: {e2}")
 
 
 class StatusController:
@@ -379,43 +401,61 @@ class StatusController:
         Returns:
             List[Dict]: 章节列表
         """
-        from src.deepnovel.persistence.manager import get_persistence_manager
+        from deepnovel.persistence.manager import get_persistence_manager
 
         pm = get_persistence_manager()
-        if not pm.mongodb_client:
-            raise HTTPException(status_code=503, detail="MongoDB not available")
 
-        try:
-            chapters = pm.mongodb_client.read(
-                collection="chapters",
-                query={"task_id": task_id}
-            )
+        # 尝试从MongoDB读取
+        if pm.mongodb_client:
+            try:
+                chapters = pm.mongodb_client.read(
+                    collection="chapters",
+                    query={"task_id": task_id}
+                )
 
-            # 转换为列表并处理数据
+                # 转换为列表并处理数据
+                chapter_list = []
+                for chapter in chapters:
+                    chapter_list.append({
+                        "chapter_id": chapter.get("chapter_id"),
+                        "chapter_num": chapter.get("chapter_num"),
+                        "title": chapter.get("title"),
+                        "content": chapter.get("content", ""),
+                        "word_count": chapter.get("word_count", 0),
+                        "created_at": chapter.get("created_at", datetime.now()).isoformat() if hasattr(chapter.get("created_at"), 'isoformat') else str(chapter.get("created_at"))
+                    })
+
+                # 按章节号排序
+                chapter_list.sort(key=lambda x: x.get("chapter_num", 0))
+
+                return {
+                    "task_id": task_id,
+                    "chapters": chapter_list,
+                    "total": len(chapter_list)
+                }
+            except Exception as e:
+                logger.warning(f"MongoDB read failed, falling back to file: {e}")
+
+        # 文件回退：扫描 output/chapters/ 目录
+        import glob as _glob
+        chapters_dir = os.path.join("output", "chapters", task_id)
+        if os.path.isdir(chapters_dir):
             chapter_list = []
-            for chapter in chapters:
-                chapter_list.append({
-                    "chapter_id": chapter.get("chapter_id"),
-                    "chapter_num": chapter.get("chapter_num"),
-                    "title": chapter.get("title"),
-                    "content": chapter.get("content", ""),
-                    "word_count": chapter.get("word_count", 0),
-                    "created_at": chapter.get("created_at", datetime.now()).isoformat() if hasattr(chapter.get("created_at"), 'isoformat') else str(chapter.get("created_at"))
-                })
-
-            # 按章节号排序
+            for fpath in sorted(_glob.glob(os.path.join(chapters_dir, "chapter_*.json"))):
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        chapter_list.append(data)
+                except Exception:
+                    continue
             chapter_list.sort(key=lambda x: x.get("chapter_num", 0))
-
             return {
                 "task_id": task_id,
                 "chapters": chapter_list,
                 "total": len(chapter_list)
             }
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get chapters for task {task_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+
+        raise HTTPException(status_code=404, detail=f"No chapters found for task {task_id}")
 
     async def get_chapter_content(self, task_id: str, chapter_num: int):
         """
@@ -428,35 +468,50 @@ class StatusController:
         Returns:
             Dict: 章节内容
         """
-        from src.deepnovel.persistence.manager import get_persistence_manager
+        from deepnovel.persistence.manager import get_persistence_manager
 
         pm = get_persistence_manager()
-        if not pm.mongodb_client:
-            raise HTTPException(status_code=503, detail="MongoDB not available")
 
-        try:
-            chapter = pm.mongodb_client.find_one(
-                collection="chapters",
-                query={"task_id": task_id, "chapter_num": chapter_num}
-            )
+        # 尝试从MongoDB读取
+        if pm.mongodb_client:
+            try:
+                chapter = pm.mongodb_client.find_one(
+                    collection="chapters",
+                    query={"task_id": task_id, "chapter_num": chapter_num}
+                )
 
-            if not chapter:
-                raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found for task {task_id}")
+                if chapter:
+                    return {
+                        "chapter_id": chapter.get("chapter_id"),
+                        "task_id": task_id,
+                        "chapter_num": chapter.get("chapter_num"),
+                        "title": chapter.get("title"),
+                        "content": chapter.get("content", ""),
+                        "word_count": chapter.get("word_count", 0),
+                        "created_at": chapter.get("created_at", datetime.now()).isoformat() if hasattr(chapter.get("created_at"), 'isoformat') else str(chapter.get("created_at"))
+                    }
+            except Exception as e:
+                logger.warning(f"MongoDB read failed, falling back to file: {e}")
 
-            return {
-                "chapter_id": chapter.get("chapter_id"),
-                "task_id": task_id,
-                "chapter_num": chapter.get("chapter_num"),
-                "title": chapter.get("title"),
-                "content": chapter.get("content", ""),
-                "word_count": chapter.get("word_count", 0),
-                "created_at": chapter.get("created_at", datetime.now()).isoformat() if hasattr(chapter.get("created_at"), 'isoformat') else str(chapter.get("created_at"))
-            }
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get chapter {chapter_num} for task {task_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        # 文件回退
+        filepath = os.path.join("output", "chapters", task_id, f"chapter_{chapter_num}.json")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return {
+                    "chapter_id": data.get("chapter_id"),
+                    "task_id": task_id,
+                    "chapter_num": data.get("chapter_num"),
+                    "title": data.get("title"),
+                    "content": data.get("content", ""),
+                    "word_count": data.get("word_count", 0),
+                    "created_at": data.get("created_at", "")
+                }
+            except Exception as e:
+                logger.error(f"Failed to read chapter file {filepath}: {e}")
+
+        raise HTTPException(status_code=404, detail=f"Chapter {chapter_num} not found for task {task_id}")
 
     async def get_task_status(self, task_id: str):
         """
@@ -469,7 +524,18 @@ class StatusController:
             TaskStatusResponse: 任务状态
         """
         if task_id not in self._task_controller._tasks:
-            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+            # 尝试从持久化存储加载
+            try:
+                pm = get_pm()
+                persisted = TaskPersistence.load_task(pm, task_id)
+                if persisted:
+                    self._task_controller._tasks[task_id] = persisted
+                else:
+                    raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
         task = self._task_controller._tasks[task_id]
 
@@ -619,14 +685,14 @@ class ConfigController:
             },
             "llm": {
                 "provider": "ollama",
-                "model": "qwen2.5-14b",
+                "model": "qwen2.5-7b",
                 "max_tokens": 8192
             },
             "messaging": {
                 "rocketmq": {"name_server": "localhost:9876"}
             },
             "agents": {
-                "coordinator": {"model": "qwen2.5-14b"},
+                "coordinator": {"model": "qwen2.5-7b"},
                 "default": {"model": "qwen2.5-7b"}
             }
         }
@@ -753,24 +819,57 @@ class HealthController:
 
     def _check_database(self):
         """检查数据库组件"""
-        self._components["database"] = {
-            "status": "healthy",
-            "checked_at": datetime.now().isoformat()
-        }
+        try:
+            service = self._get_health_service()
+            db_health = service.check_single("mongodb")
+            self._components["database"] = {
+                "status": db_health.status.value,
+                "latency_ms": db_health.latency_ms,
+                "details": db_health.details,
+                "checked_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            self._components["database"] = {
+                "status": "unhealthy",
+                "error": str(e),
+                "checked_at": datetime.now().isoformat()
+            }
 
     def _check_messaging(self):
         """检查消息组件"""
-        self._components["messaging"] = {
-            "status": "healthy",
-            "checked_at": datetime.now().isoformat()
-        }
+        try:
+            service = self._get_health_service()
+            mq_health = service.check_single("rocketmq")
+            self._components["messaging"] = {
+                "status": mq_health.status.value,
+                "latency_ms": mq_health.latency_ms,
+                "details": mq_health.details,
+                "checked_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            self._components["messaging"] = {
+                "status": "unhealthy",
+                "error": str(e),
+                "checked_at": datetime.now().isoformat()
+            }
 
     def _check_llm(self):
         """检查LLM组件"""
-        self._components["llm"] = {
-            "status": "healthy",
-            "checked_at": datetime.now().isoformat()
-        }
+        try:
+            service = self._get_health_service()
+            llm_health = service.check_single("ollama")
+            self._components["llm"] = {
+                "status": llm_health.status.value,
+                "latency_ms": llm_health.latency_ms,
+                "details": llm_health.details,
+                "checked_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            self._components["llm"] = {
+                "status": "unhealthy",
+                "error": str(e),
+                "checked_at": datetime.now().isoformat()
+            }
 
 
 # 创建单例实例

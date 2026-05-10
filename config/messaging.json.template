@@ -1,0 +1,11 @@
+{
+  "version": "1.0.0",
+  "description": "Messaging configuration template — copy to messaging.json and customize",
+  "messaging": {
+    "rocketmq": {
+      "name_server": "localhost:9876",
+      "producer_group": "novel-producer",
+      "consumer_group": "novel-consumer"
+    }
+  }
+}

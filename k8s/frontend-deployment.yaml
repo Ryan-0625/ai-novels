@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-novels-frontend
+  labels:
+    app: ai-novels-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-novels-frontend
+  template:
+    metadata:
+      labels:
+        app: ai-novels-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ai-novels-frontend:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-novels-frontend
+spec:
+  selector:
+    app: ai-novels-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

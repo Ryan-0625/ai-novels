@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
-from src.deepnovel.utils import log_error, log_info, get_logger
-from src.deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
+from deepnovel.utils import log_error, log_info, get_logger
+from deepnovel.agents.base import BaseAgent, AgentConfig, Message, MessageType
 
 
 class TaskState(Enum):
@@ -184,10 +184,10 @@ class WorkflowOrchestrator:
         try:
             agent.initialize()
             self._agents[agent.name] = agent
-            self._logger.info(f"Agent registered: {agent.name}")
+            self._logger.agent(f"Agent registered: {agent.name}")
             return True
         except Exception as e:
-            self._logger.error(f"Failed to register agent {agent.name}: {e}")
+            self._logger.agent_error(f"Failed to register agent {agent.name}: {e}")
             return False
     
     def register_workflow(self, workflow: WorkflowDefinition):
@@ -198,7 +198,7 @@ class WorkflowOrchestrator:
             workflow: 工作流定义
         """
         self._workflows[workflow.name] = workflow
-        self._logger.info(f"Workflow registered: {workflow.name}")
+        self._logger.agent(f"Workflow registered: {workflow.name}")
     
     def create_task(
         self,
@@ -219,7 +219,7 @@ class WorkflowOrchestrator:
         """
         workflow = self._workflows.get(workflow_name)
         if not workflow:
-            self._logger.error(f"Workflow not found: {workflow_name}")
+            self._logger.agent_error(f"Workflow not found: {workflow_name}")
             return None
         
         # 创建任务
@@ -238,7 +238,7 @@ class WorkflowOrchestrator:
         self._tasks[task.id] = task
         self._task_history.append(task.id)
         
-        self._logger.info(f"Task created: {task.id} for workflow {workflow_name}")
+        self._logger.agent(f"Task created: {task.id} for workflow {workflow_name}")
         return task
     
     def execute_task(self, task_id: str) -> bool:
@@ -253,13 +253,13 @@ class WorkflowOrchestrator:
         """
         task = self._tasks.get(task_id)
         if not task:
-            self._logger.error(f"Task not found: {task_id}")
+            self._logger.agent_error(f"Task not found: {task_id}")
             return False
         
         workflow_name = task.input_data.get("workflow_name")
         workflow = self._workflows.get(workflow_name)
         if not workflow:
-            self._logger.error(f"Workflow not found: {workflow_name}")
+            self._logger.agent_error(f"Workflow not found: {workflow_name}")
             return False
         
         # 开始执行
@@ -304,7 +304,7 @@ class WorkflowOrchestrator:
             return success
             
         except Exception as e:
-            self._logger.error(f"Task execution failed: {e}")
+            self._logger.agent_error(f"Task execution failed: {e}")
             task.transition_to(TaskState.FAILED, f"执行异常: {str(e)}")
             return False
     
@@ -328,7 +328,7 @@ class WorkflowOrchestrator:
         # 获取智能体
         agent = self._agents.get(stage.agent_name)
         if not agent:
-            self._logger.error(f"Agent not found: {stage.agent_name}")
+            self._logger.agent_error(f"Agent not found: {stage.agent_name}")
             return False
         
         # 准备输入数据
@@ -489,7 +489,7 @@ class WorkflowOrchestrator:
             
             return True
         except Exception as e:
-            self._logger.error(f"Condition evaluation failed: {e}")
+            self._logger.agent_error(f"Condition evaluation failed: {e}")
             return True
     
     def _get_nested_value(self, data: Dict, path: str) -> Any:

@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 import yaml
 
-from src.deepnovel.utils import log_warn
+from deepnovel.utils import log_warn
 
 
 class ConfigLoader:

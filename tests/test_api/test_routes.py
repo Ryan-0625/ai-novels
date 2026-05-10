@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 # 导入FastAPI应用
-from src.deepnovel.api.main import app
-from src.deepnovel.api.routes import (
+from deepnovel.api.main import app
+from deepnovel.api.legacy_routes import (
     TaskCreateRequest,
     TaskCreateResponse,
     TaskStatusResponse

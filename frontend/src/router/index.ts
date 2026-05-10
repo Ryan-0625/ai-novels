@@ -48,6 +48,26 @@ const routes: Array<RouteRecordRaw> = [
         } satisfies RouteMeta,
       },
       {
+        path: 'dashboard',
+        name: 'TaskDashboard',
+        component: () => import('@/views/TaskDashboardView.vue'),
+        meta: {
+          title: '调度监控',
+          icon: 'DataLine',
+          order: 2,
+        } satisfies RouteMeta,
+      },
+      {
+        path: 'config',
+        name: 'ConfigDashboard',
+        component: () => import('@/views/ConfigDashboardView.vue'),
+        meta: {
+          title: '配置管理',
+          icon: 'Setting',
+          order: 4,
+        } satisfies RouteMeta,
+      },
+      {
         path: 'preview/:taskId',
         name: 'NovelPreview',
         component: () => import('@/views/NovelPreviewView.vue'),

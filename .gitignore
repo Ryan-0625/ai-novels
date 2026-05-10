@@ -13,6 +13,7 @@
 
 # AI Assistant
 .claude/
+.openclaw/
 
 # =============================================================================
 # Python
@@ -124,7 +125,7 @@ config/data/
 *.turtle
 
 # =============================================================================
-# Testing (keep test code, ignore coverage reports)
+# Testing (keep test code, ignore coverage reports and temp files)
 # =============================================================================
 htmlcov/
 .tox/
@@ -137,6 +138,11 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+tests/output/
+tests/temp/
+tests/*.md
+tests/*.json
+tests/*.xml
 
 # =============================================================================
 # Documentation directories (ignore generated docs, keep project plans)

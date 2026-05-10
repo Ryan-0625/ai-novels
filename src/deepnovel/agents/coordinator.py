@@ -25,16 +25,19 @@ from .constants import (
     DEFAULT_GENRE,
     CONTENT_TRUNCATE_LENGTH_LARGE,
 )
-from src.deepnovel.messaging.rocketmq_producer import RocketMQProducer, ProducerConfig
-from src.deepnovel.messaging.rocketmq_consumer import ConsumerConfig, RocketMQConsumer
-from src.deepnovel.model.message import (
+from deepnovel.messaging.rocketmq_producer import RocketMQProducer, ProducerConfig
+from deepnovel.messaging.rocketmq_consumer import ConsumerConfig, RocketMQConsumer
+from deepnovel.message.message import (
     TaskRequest,
     TaskResponse,
     TaskStatusUpdate,
     AgentMessage
 )
-from src.deepnovel.config.manager import settings
-from src.deepnovel.utils import log_info, log_warn, log_error, get_logger
+from deepnovel.config.manager import settings
+from deepnovel.utils import log_info, log_warn, log_error, get_logger
+
+# 事件总线（用于发布 DAG 执行事件）
+from deepnovel.core.event_bus import event_bus as _event_bus
 
 # 为向后兼容性保留别名
 RocketMQConfig = ProducerConfig
@@ -851,6 +854,15 @@ Return as JSON with the same structure."""
         node.status = "executing"
         start_time = time.time()
 
+        # 发布节点开始事件
+        self._emit_event("agent.started", {
+            "agent": node_name,
+            "stage": "dag_node_execution",
+            "progress": self._calculate_progress() / 100.0,
+            "total_nodes": self._total_nodes,
+            "completed_nodes": self._tasks_completed,
+        })
+
         # 创建Agent并执行
         agent = self._create_agent(node_name)
         logger.agent(f"[_execute_single_node] agent created: {node_name}")
@@ -901,6 +913,16 @@ Return as JSON with the same structure."""
                 # 保存结果到上下文
                 self._save_node_result(node_name, result)
 
+                # 发布节点完成事件
+                self._emit_event("agent.completed", {
+                    "agent": node_name,
+                    "stage": "dag_node_execution",
+                    "progress": self._calculate_progress() / 100.0,
+                    "elapsed_time": elapsed,
+                    "total_nodes": self._total_nodes,
+                    "completed_nodes": self._tasks_completed,
+                })
+
                 logger.agent(f"[_execute_single_node] {node_name} completed successfully")
                 return result
 
@@ -909,6 +931,14 @@ Return as JSON with the same structure."""
                 node.error = str(e)
                 self._tasks_failed += 1
 
+                # 发布节点失败事件
+                self._emit_event("agent.failed", {
+                    "agent": node_name,
+                    "stage": "dag_node_execution",
+                    "error": str(e),
+                    "progress": self._calculate_progress() / 100.0,
+                })
+
                 logger.agent(f"[_execute_single_node] {node_name} failed: {e}")
                 return {
                     "node": node_name,
@@ -916,6 +946,12 @@ Return as JSON with the same structure."""
                     "error": str(e)
                 }
 
+        # Agent 创建失败
+        self._emit_event("agent.failed", {
+            "agent": node_name,
+            "stage": "dag_node_creation",
+            "error": "Failed to create agent instance",
+        })
         logger.agent(f"[_execute_single_node] Failed to create agent: {node_name}")
         return None
 
@@ -1017,7 +1053,7 @@ Return as JSON with the same structure."""
         enhanced_context = [base_context]
 
         # 从数据库读取相关数据作为上下文
-        from src.deepnovel.persistence import get_persistence_manager
+        from deepnovel.persistence import get_persistence_manager
 
         pm = get_persistence_manager()
         task_id = self._current_task.get("task_id", "") if self._current_task else ""
@@ -1137,6 +1173,22 @@ Return as JSON with the same structure."""
         }
 
         return context_map.get(agent_name, f"Execute {agent_name} tasks.")
+
+    def _emit_event(self, event_type: str, payload: Dict[str, Any]) -> None:
+        """发布事件到 EventBus（fire-and-forget，同步上下文安全）"""
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(
+                    _event_bus.publish_type(
+                        event_type,
+                        payload=payload,
+                        source="coordinator",
+                    )
+                )
+        except Exception:
+            pass
 
     def get_execution_status(self) -> Dict[str, Any]:
         """获取执行状态"""

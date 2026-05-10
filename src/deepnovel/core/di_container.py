@@ -96,21 +96,132 @@ class ServiceScope:
 
 
 class ServiceProvider:
-    """服务提供者"""
+    """
+    服务提供者（优化版）
     
-    def __init__(self, container: 'DIContainer'):
+    优化点：
+    1. 服务实例缓存 - 减少重复解析开销
+    2. 性能统计 - 监控服务解析性能
+    3. 缓存预热 - 支持预加载常用服务
+    """
+    
+    def __init__(self, container: 'DIContainer', enable_cache: bool = True):
         self._container = container
         self._singletons: Dict[Type, Any] = {}
         self._scoped_instances: Dict[int, ServiceScope] = {}
         self._current_scope: Optional[ServiceScope] = None
         self._lock = threading.Lock()
+        
+        # 服务实例缓存（优化重复解析）
+        self._enable_cache = enable_cache
+        self._instance_cache: Dict[Type, Any] = {}
+        self._cache_lock = threading.RLock()
+        
+        # 性能统计
+        self._stats = {
+            'cache_hits': 0,
+            'cache_misses': 0,
+            'singleton_hits': 0,
+            'scoped_hits': 0,
+            'transient_creates': 0,
+            'total_requests': 0
+        }
+        self._stats_lock = threading.Lock()
     
-    def get_service(self, interface: Type[T]) -> Optional[T]:
-        """获取服务"""
+    def get_service(self, interface: Type[T], use_cache: bool = True) -> Optional[T]:
+        """
+        获取服务（带缓存优化）
+        
+        Args:
+            interface: 服务接口类型
+            use_cache: 是否使用实例缓存
+            
+        Returns:
+            服务实例或None
+        """
+        # 更新统计
+        with self._stats_lock:
+            self._stats['total_requests'] += 1
+        
+        # 尝试从缓存获取（仅对Singleton和Scoped有效）
+        if self._enable_cache and use_cache:
+            cached = self._get_from_cache(interface)
+            if cached is not None:
+                with self._stats_lock:
+                    self._stats['cache_hits'] += 1
+                return cached
+            with self._stats_lock:
+                self._stats['cache_misses'] += 1
+        
+        # 从容器获取
         descriptor = self._container.get_descriptor(interface)
         if descriptor is None:
             return None
-        return descriptor.get_instance(self)
+        
+        instance = descriptor.get_instance(self)
+        
+        # 更新统计
+        if descriptor.lifecycle == Lifecycle.SINGLETON:
+            with self._stats_lock:
+                self._stats['singleton_hits'] += 1
+        elif descriptor.lifecycle == Lifecycle.SCOPED:
+            with self._stats_lock:
+                self._stats['scoped_hits'] += 1
+        else:
+            with self._stats_lock:
+                self._stats['transient_creates'] += 1
+        
+        # 缓存实例（仅缓存Singleton和Scoped）
+        if self._enable_cache and use_cache and descriptor.lifecycle != Lifecycle.TRANSIENT:
+            self._add_to_cache(interface, instance)
+        
+        return instance
+    
+    def _get_from_cache(self, interface: Type) -> Any:
+        """从缓存获取服务实例"""
+        with self._cache_lock:
+            return self._instance_cache.get(interface)
+    
+    def _add_to_cache(self, interface: Type, instance: Any):
+        """添加服务实例到缓存"""
+        with self._cache_lock:
+            self._instance_cache[interface] = instance
+    
+    def invalidate_cache(self, interface: Type = None):
+        """
+        使缓存失效
+        
+        Args:
+            interface: 指定接口类型，None则清空所有缓存
+        """
+        with self._cache_lock:
+            if interface is None:
+                self._instance_cache.clear()
+            else:
+                self._instance_cache.pop(interface, None)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取服务解析统计信息"""
+        with self._stats_lock:
+            stats = self._stats.copy()
+            total = stats['total_requests']
+            stats['cache_hit_rate'] = round(stats['cache_hits'] / total, 4) if total > 0 else 0
+            stats['cache_size'] = len(self._instance_cache)
+            return stats
+    
+    def warmup_cache(self, interfaces: List[Type]):
+        """
+        预热缓存 - 预加载常用服务
+        
+        Args:
+            interfaces: 需要预热的服务接口列表
+        """
+        for interface in interfaces:
+            try:
+                self.get_service(interface, use_cache=True)
+            except Exception as e:
+                # 预热失败不影响主流程
+                pass
     
     def get_required_service(self, interface: Type[T]) -> T:
         """获取必需的服务"""

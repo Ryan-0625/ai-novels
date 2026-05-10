@@ -10,7 +10,7 @@ import time
 import threading
 from unittest.mock import Mock, patch
 
-from src.deepnovel.database.connection_pool import (
+from deepnovel.database.connection_pool import (
     ConnectionStatus,
     ConnectionWrapper,
     BaseConnectionPool
@@ -128,7 +128,7 @@ class TestBaseConnectionPool:
         
         pool._create_connection = mock_create
         
-        with patch('src.deepnovel.database.connection_pool.log_error'):
+        with patch('deepnovel.database.connection_pool.log_error'):
             pool.initialize()
         
         # 只有第三次成功
