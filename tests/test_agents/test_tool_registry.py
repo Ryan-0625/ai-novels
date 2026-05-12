@@ -4,7 +4,7 @@ ToolRegistry 与 @tool 装饰器单元测试
 
 import pytest
 
-from deepnovel.agents.tools.tool_registry import (
+from ai_novels.agents.tools.tool_registry import (
     ToolNotFoundError,
     ToolParameter,
     ToolRegistry,

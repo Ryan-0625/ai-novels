@@ -4,16 +4,16 @@ ToolEnabledAgent 单元测试
 
 import pytest
 
-from deepnovel.agents.base import AgentConfig, Message, MessageType
-from deepnovel.agents.prompt_composer import PromptComposer
-from deepnovel.agents.tool_enabled_agent import ToolEnabledAgent, ToolEnabledAgentConfig
-from deepnovel.agents.tools.tool_registry import ToolRegistry, tool
-from deepnovel.core.event_bus import EventBus, EventType
-from deepnovel.core.working_memory import WorkingMemory
-from deepnovel.llm.tier import ModelTier, TierConfig, TierRouter
-from deepnovel.rag import RAGEngine, RAGConfig
-from deepnovel.llm.embedding_adapter import EmbeddingConfig, BaseEmbeddingBackend
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
+from ai_novels.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.prompt_composer import PromptComposer
+from ai_novels.agents.tool_enabled_agent import ToolEnabledAgent, ToolEnabledAgentConfig
+from ai_novels.agents.tools.tool_registry import ToolRegistry, tool
+from ai_novels.core.event_bus import EventBus, EventType
+from ai_novels.core.working_memory import WorkingMemory
+from ai_novels.llm.tier import ModelTier, TierConfig, TierRouter
+from ai_novels.rag import RAGEngine, RAGConfig
+from ai_novels.llm.embedding_adapter import EmbeddingConfig, BaseEmbeddingBackend
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
 from typing import List
 
 

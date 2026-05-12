@@ -6,7 +6,7 @@ import os
 # 添加 src 到路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from deepnovel.services.health_service import check_system_health
+from ai_novels.services.health_service import check_system_health
 import json
 
 print('Testing health check...')

@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from deepnovel.messaging.rocketmq_producer import (
+from ai_novels.messaging.rocketmq_producer import (
     ProducerConfig, RocketMQProducer, BaseProducer,
     NovelGenerationMessage, notifyMessage
 )
@@ -20,9 +20,9 @@ from deepnovel.messaging.rocketmq_producer import (
 @pytest.fixture(autouse=True)
 def _patch_rocketmq():
     """自动 mock rocketmq 外部依赖"""
-    with patch('deepnovel.messaging.rocketmq_producer._ROCKETMQ_AVAILABLE', True):
-        with patch('deepnovel.messaging.rocketmq_producer.Message', create=True):
-            with patch('deepnovel.messaging.rocketmq_producer.rocketmq', create=True) as mock_rmq:
+    with patch('ai_novels.messaging.rocketmq_producer._ROCKETMQ_AVAILABLE', True):
+        with patch('ai_novels.messaging.rocketmq_producer.Message', create=True):
+            with patch('ai_novels.messaging.rocketmq_producer.rocketmq', create=True) as mock_rmq:
                 mock_producer = MagicMock()
                 mock_rmq.Producer.return_value = mock_producer
                 yield_mock = mock_producer.send_sync

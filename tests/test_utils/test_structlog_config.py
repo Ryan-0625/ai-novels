@@ -13,7 +13,7 @@ import logging
 import pytest
 import structlog
 
-from deepnovel.utils.structlog_config import (
+from ai_novels.utils.structlog_config import (
     StructlogHandler,
     configure_structlog,
     get_structlog_logger,

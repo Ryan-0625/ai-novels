@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.models import (
+from ai_novels.models import (
     EpisodicMemory,
     SemanticMemory,
     EmotionalMemory,
@@ -20,7 +20,7 @@ from deepnovel.models import (
     ReactionType,
     SkillCategory,
 )
-from deepnovel.repositories import (
+from ai_novels.repositories import (
     EpisodicMemoryRepository,
     SemanticMemoryRepository,
     EmotionalMemoryRepository,

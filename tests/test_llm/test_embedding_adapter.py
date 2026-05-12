@@ -7,7 +7,7 @@ Embedding 适配器单元测试
 import pytest
 from typing import List
 
-from deepnovel.llm.embedding_adapter import (
+from ai_novels.llm.embedding_adapter import (
     EmbeddingConfig,
     EmbeddingAdapter,
     BaseEmbeddingBackend,

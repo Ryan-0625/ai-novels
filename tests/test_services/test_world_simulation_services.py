@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.models import Fact, FactSource, Event, Narrative, NarrativeType, POVType, WorldRule, RuleType
-from deepnovel.repositories import FactRepository, EventRepository, NarrativeRepository, WorldRuleRepository
-from deepnovel.services import WorldStateService, EventService, NarrativeService, WorldRuleService
+from ai_novels.models import Fact, FactSource, Event, Narrative, NarrativeType, POVType, WorldRule, RuleType
+from ai_novels.repositories import FactRepository, EventRepository, NarrativeRepository, WorldRuleRepository
+from ai_novels.services import WorldStateService, EventService, NarrativeService, WorldRuleService
 
 
 class TestWorldStateService:

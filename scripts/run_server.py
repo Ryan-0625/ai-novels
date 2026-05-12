@@ -14,7 +14,7 @@ print(f"Project root: {project_root}")
 print(f"Python path: {sys.path[:5]}")
 
 try:
-    from src.deepnovel.api.main import app
+    from src.ai_novels.api.main import app
     print("App imported successfully")
 except Exception as e:
     print(f"Failed to import app: {e}")

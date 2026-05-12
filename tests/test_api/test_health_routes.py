@@ -15,13 +15,13 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepnovel.api.health_routes import (
+from ai_novels.api.health_routes import (
     health_check,
     liveness_probe,
     metrics,
     readiness_probe,
 )
-from deepnovel.config.app_config import AppConfig
+from ai_novels.config.app_config import AppConfig
 
 
 class TestLivenessProbe:

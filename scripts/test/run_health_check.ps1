@@ -4,7 +4,7 @@ python -c "
 import sys
 import os
 sys.path.insert(0, 'src')
-from deepnovel.services.health_service import check_system_health
+from ai_novels.services.health_service import check_system_health
 import json
 
 print('Testing health check...')

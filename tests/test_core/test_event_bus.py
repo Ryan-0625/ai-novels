@@ -11,7 +11,7 @@ from typing import List
 import sys
 sys.path.insert(0, "e:/VScode(study)/Project/AI-Novels/src")
 
-from deepnovel.core.event_bus import (
+from ai_novels.core.event_bus import (
     Event,
     EventBus,
     EventType,
@@ -402,7 +402,7 @@ class TestGlobalEventBus:
     @pytest.mark.asyncio
     async def test_global_event_bus_exists(self):
         """测试全局 event_bus 实例存在"""
-        from deepnovel.core.event_bus import event_bus as global_bus
+        from ai_novels.core.event_bus import event_bus as global_bus
         
         assert global_bus is not None
         assert isinstance(global_bus, EventBus)
@@ -410,7 +410,7 @@ class TestGlobalEventBus:
     @pytest.mark.asyncio
     async def test_global_subscribe_and_publish(self):
         """测试全局事件总线订阅和发布"""
-        from deepnovel.core.event_bus import (
+        from ai_novels.core.event_bus import (
             event_bus as global_bus,
             subscribe,
             publish_type,

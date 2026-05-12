@@ -69,11 +69,11 @@ function Start-Server {
     }
 
     Write-Host "正在启动服务器 on port $Port..."
-    Write-Host "执行命令: uvicorn src.deepnovel.api.main:app --host 0.0.0.0 --port $Port --reload"
+    Write-Host "执行命令: uvicorn src.ai_novels.api.main:app --host 0.0.0.0 --port $Port --reload"
 
     # 启动服务器（后台）
     Start-Process -FilePath "uvicorn" `
-        -ArgumentList "src.deepnovel.api.main:app", "--host", "0.0.0.0", "--port", $Port, "--reload" `
+        -ArgumentList "src.ai_novels.api.main:app", "--host", "0.0.0.0", "--port", $Port, "--reload" `
         -NoNewWindow `
         -RedirectStandardOutput "$ProjectDir/logs/server.log" `
         -RedirectStandardError "$ProjectDir/logs/server-error.log" `

@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from deepnovel.core.working_memory import (
+from ai_novels.core.working_memory import (
     WorkingMemoryEntry,
     AttentionFocus,
     WorkingMemory,

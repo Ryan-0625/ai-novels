@@ -8,7 +8,7 @@ MemoryContext 单元测试
 
 import pytest
 
-from deepnovel.core.memory_context import (
+from ai_novels.core.memory_context import (
     LongTermMemorySnapshot,
     MemoryContext,
     SensoryBuffer,

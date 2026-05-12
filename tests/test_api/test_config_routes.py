@@ -15,8 +15,8 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 
-from deepnovel.api.routes.config_routes import router as config_router
-from deepnovel.config.hub import ConfigHub
+from ai_novels.api.routes.config_routes import router as config_router
+from ai_novels.config.hub import ConfigHub
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ def client(mock_hub):
 
     app.dependency_overrides.clear()
     # 需要覆盖 config_routes 中的 get_config_hub_dep
-    from deepnovel.api.routes.config_routes import get_config_hub_dep
+    from ai_novels.api.routes.config_routes import get_config_hub_dep
     app.dependency_overrides[get_config_hub_dep] = get_mock_hub
 
     return TestClient(app)

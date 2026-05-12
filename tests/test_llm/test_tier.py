@@ -4,7 +4,7 @@ LLM Tier 系统单元测试
 
 import pytest
 
-from deepnovel.llm.tier import (
+from ai_novels.llm.tier import (
     ModelTier,
     TierConfig,
     TaskComplexityEstimator,

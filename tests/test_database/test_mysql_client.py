@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 import mysql.connector
 from mysql.connector import Error
 
-from deepnovel.database.mysql_client import MySQLClient
+from ai_novels.database.mysql_client import MySQLClient
 
 
 class TestMySQLClientInit:
@@ -40,7 +40,7 @@ class TestMySQLClientInit:
     
     def test_init_with_default_config(self):
         """测试使用默认配置初始化"""
-        with patch('deepnovel.database.mysql_client.settings') as mock_settings:
+        with patch('ai_novels.database.mysql_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {
                 "host": "localhost",
                 "port": 3306,
@@ -61,7 +61,7 @@ class TestMySQLClientInit:
     
     def test_init_with_explicit_params(self):
         """测试使用显式参数初始化"""
-        with patch('deepnovel.database.mysql_client.settings') as mock_settings:
+        with patch('ai_novels.database.mysql_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {}
             
             client = MySQLClient(
@@ -82,7 +82,7 @@ class TestMySQLClientInit:
 class TestMySQLClientConnect:
     """测试MySQL连接功能"""
     
-    @patch('deepnovel.database.mysql_client.pooling.MySQLConnectionPool')
+    @patch('ai_novels.database.mysql_client.pooling.MySQLConnectionPool')
     def test_connect_success(self, mock_pool_class):
         """测试连接成功"""
         mock_pool = Mock()
@@ -102,7 +102,7 @@ class TestMySQLClientConnect:
         assert client._is_connected is True
         mock_pool_class.assert_called_once()
     
-    @patch('deepnovel.database.mysql_client.pooling.MySQLConnectionPool')
+    @patch('ai_novels.database.mysql_client.pooling.MySQLConnectionPool')
     def test_connect_failure(self, mock_pool_class):
         """测试连接失败"""
         mock_pool_class.side_effect = Error("Connection refused")

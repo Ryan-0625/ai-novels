@@ -13,7 +13,7 @@ from datetime import datetime
 from sqlmodel import SQLModel
 
 # 确保模型注册到metadata
-from deepnovel.models import (
+from ai_novels.models import (
     Novel, Character, WorldEntity,
     ChapterOutline, ChapterContent,
     Conflict, NarrativeHook,

@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepnovel.models import Character, ChapterContent, ChapterOutline, Novel, Task
-from deepnovel.repositories import (
+from ai_novels.models import Character, ChapterContent, ChapterOutline, Novel, Task
+from ai_novels.repositories import (
     BaseRepository,
     CharacterRepository,
     ChapterContentRepository,

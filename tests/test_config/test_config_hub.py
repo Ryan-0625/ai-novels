@@ -6,8 +6,8 @@ ConfigHub 单元测试
 
 import pytest
 
-from deepnovel.config.hub import ConfigHub, get_config_hub, get_novel_config
-from deepnovel.config.novel_config import GenreType, NovelConfig
+from ai_novels.config.hub import ConfigHub, get_config_hub, get_novel_config
+from ai_novels.config.novel_config import GenreType, NovelConfig
 
 
 class TestConfigHubSingleton:
@@ -116,7 +116,7 @@ class TestConfigHubProperties:
         hub = ConfigHub()
         hub.initialize()
         config = hub.config
-        assert config.app_name == "deepnovel-ai"
+        assert config.app_name == "ai-novels-ai"
 
     def test_is_initialized_after_init(self):
         hub = ConfigHub()

@@ -7,7 +7,7 @@ NovelConfig 单元测试
 import pytest
 from pydantic import ValidationError
 
-from deepnovel.config.novel_config import (
+from ai_novels.config.novel_config import (
     ChapterConfig,
     CharacterConfig,
     GenreType,

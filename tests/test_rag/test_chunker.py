@@ -6,7 +6,7 @@
 
 import pytest
 
-from deepnovel.rag.chunker import Chunk, ChunkStrategy, TextChunker
+from ai_novels.rag.chunker import Chunk, ChunkStrategy, TextChunker
 
 
 SAMPLE_TEXT = """修仙世界分为五大境界。

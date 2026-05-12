@@ -8,8 +8,8 @@ FastAPI 依赖注入层单元测试
 
 import pytest
 
-from deepnovel.api.dependencies import RepositoryProvider, get_config_dep
-from deepnovel.repositories import (
+from ai_novels.api.dependencies import RepositoryProvider, get_config_dep
+from ai_novels.repositories import (
     CharacterRepository,
     ChapterContentRepository,
     ChapterOutlineRepository,
@@ -65,7 +65,7 @@ class TestConfigDependency:
     @pytest.mark.asyncio
     async def test_get_config_dep_returns_app_config(self):
         """get_config_dep 必须返回 AppConfig"""
-        from deepnovel.config.app_config import AppConfig
+        from ai_novels.config.app_config import AppConfig
 
         config = await get_config_dep()
         assert isinstance(config, AppConfig)

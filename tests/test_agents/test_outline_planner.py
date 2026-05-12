@@ -12,8 +12,8 @@ import json
 import pytest
 from unittest.mock import patch
 
-from deepnovel.agents.implementations import OutlinePlannerAgent
-from deepnovel.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.implementations import OutlinePlannerAgent
+from ai_novels.agents.base import AgentConfig, Message, MessageType
 
 
 @pytest.fixture

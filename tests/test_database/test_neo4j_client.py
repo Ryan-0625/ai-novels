@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from neo4j.exceptions import Neo4jError
 
-from deepnovel.database.neo4j_client import Neo4jClient
+from ai_novels.database.neo4j_client import Neo4jClient
 
 
 class TestNeo4jClientInit:
@@ -35,7 +35,7 @@ class TestNeo4jClientInit:
     
     def test_init_with_default_config(self):
         """测试使用默认配置初始化"""
-        with patch('deepnovel.database.neo4j_client.settings') as mock_settings:
+        with patch('ai_novels.database.neo4j_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {
                 "uri": "bolt://localhost:7687",
                 "user": "neo4j",
@@ -52,7 +52,7 @@ class TestNeo4jClientInit:
     
     def test_init_with_explicit_params(self):
         """测试使用显式参数初始化"""
-        with patch('deepnovel.database.neo4j_client.settings') as mock_settings:
+        with patch('ai_novels.database.neo4j_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {}
             
             client = Neo4jClient(
@@ -73,7 +73,7 @@ class TestNeo4jClientInit:
 class TestNeo4jClientConnect:
     """测试Neo4j连接功能"""
     
-    @patch('deepnovel.database.neo4j_client.GraphDatabase.driver')
+    @patch('ai_novels.database.neo4j_client.GraphDatabase.driver')
     def test_connect_success(self, mock_driver_class):
         """测试连接成功"""
         mock_driver = Mock()
@@ -98,7 +98,7 @@ class TestNeo4jClientConnect:
         assert client._is_connected is True
         mock_driver_class.assert_called_once()
     
-    @patch('deepnovel.database.neo4j_client.GraphDatabase.driver')
+    @patch('ai_novels.database.neo4j_client.GraphDatabase.driver')
     def test_connect_failure(self, mock_driver_class):
         """测试连接失败"""
         mock_driver_class.side_effect = Neo4jError("Connection refused")

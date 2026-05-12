@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from deepnovel.agents.implementations import CharacterGeneratorAgent
-from deepnovel.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.implementations import CharacterGeneratorAgent
+from ai_novels.agents.base import AgentConfig, Message, MessageType
 
 
 @pytest.fixture

@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.agents.tools import (
+from ai_novels.agents.tools import (
     MemoryEncodingTool,
     MemoryRetrievalTool,
     MemoryConsolidationTool,
 )
-from deepnovel.models import (
+from ai_novels.models import (
     EpisodicMemory,
     SemanticMemory,
     EmotionalMemory,
@@ -24,7 +24,7 @@ from deepnovel.models import (
     ReactionType,
     SkillCategory,
 )
-from deepnovel.services import (
+from ai_novels.services import (
     MemoryEncodingService,
     MemoryRetrievalService,
     MemoryConsolidationService,

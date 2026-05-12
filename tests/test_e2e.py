@@ -14,16 +14,16 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from deepnovel.agents.base import AgentConfig, Message, MessageType
-from deepnovel.agents.coordinator import CoordinatorAgent
-from deepnovel.agents.implementations import (
+from ai_novels.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.coordinator import CoordinatorAgent
+from ai_novels.agents.implementations import (
     OutlinePlannerAgent,
     CharacterGeneratorAgent,
     ContentGeneratorAgent,
     QualityCheckerAgent,
 )
-from deepnovel.agents.task_orchestrator import TaskOrchestrator, TaskPriority
-from deepnovel.core.event_bus import EventBus, EventType
+from ai_novels.agents.task_orchestrator import TaskOrchestrator, TaskPriority
+from ai_novels.core.event_bus import EventBus, EventType
 
 
 @pytest.fixture
@@ -122,7 +122,7 @@ class TestTaskOrchestratorE2E:
             orchestrator.register_worker(mock_agent)
 
         # 提交 DAG
-        from deepnovel.agents.task_orchestrator import DAGTaskNode
+        from ai_novels.agents.task_orchestrator import DAGTaskNode
 
         nodes = [
             DAGTaskNode(

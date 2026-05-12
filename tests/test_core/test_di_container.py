@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 import sys
 sys.path.insert(0, "e:/VScode(study)/Project/AI-Novels/src")
 
-from deepnovel.core.di_container import (
+from ai_novels.core.di_container import (
     DIContainer,
     ServiceProvider,
     ServiceDescriptor,

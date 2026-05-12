@@ -8,12 +8,12 @@
 - GET /api/v2/tasks/workflows/definitions — 获取工作流定义
 """
 
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from deepnovel.api.routes.task_routes import router as task_router
+from ai_novels.api.routes.task_routes import router as task_router
 from fastapi import FastAPI
 
 
@@ -21,6 +21,7 @@ from fastapi import FastAPI
 def mock_orchestrator():
     """创建 Mock TaskOrchestrator"""
     orch = MagicMock()
+    orch.cancel = AsyncMock(return_value=True)
     orch.get_stats.return_value = {
         "workers": {
             "agent_1": {"current_task": "task-1", "idle": False},
@@ -134,14 +135,14 @@ class TestTaskAction:
         assert data["action"] == "resume"
 
     def test_cancel_action(self, client):
-        """取消操作返回不支持提示"""
+        """取消操作"""
         response = client.post(
             "/api/v2/tasks/task-1/action",
             json={"action": "cancel"},
         )
 
         assert response.status_code == 200
-        assert response.json()["success"] is False
+        assert response.json()["success"] is True
 
     def test_invalid_action_payload(self, client):
         """无效的操作 payload"""
@@ -159,7 +160,7 @@ class TestListWorkflows:
     def test_list_workflows_from_orchestrator(self, client, mock_orchestrator):
         """从 orchestrator 获取工作流列表"""
         # 需要同时提供 ConfigHub mock（因为端点依赖它）
-        from deepnovel.api.routes.task_routes import get_config_hub_dep
+        from ai_novels.api.routes.task_routes import get_config_hub_dep
         # 这个测试的 client fixture 已经设置了 task_orchestrator
         # 但 list_workflows 端点还依赖 ConfigHub，需要通过 app.dependency_overrides 设置
         # 由于 client fixture 已经创建了 TestClient，我们直接测试默认返回

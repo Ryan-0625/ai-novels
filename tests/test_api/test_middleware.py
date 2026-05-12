@@ -9,7 +9,7 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.testclient import TestClient
 
-from deepnovel.api.middleware import (
+from ai_novels.api.middleware import (
     RequestContext,
     RequestIDMiddleware,
     TimingMiddleware,
@@ -159,7 +159,7 @@ class TestTimingMiddleware:
         
         with patch.object(middleware.monitor, 'record_histogram'):
             with patch.object(middleware.monitor, 'record_counter'):
-                with patch('deepnovel.api.middleware.logger') as mock_logger:
+                with patch('ai_novels.api.middleware.logger') as mock_logger:
                     response = await middleware.dispatch(mock_request, slow_call_next)
                     
                     # 验证慢请求被记录
@@ -194,7 +194,7 @@ class TestLoggingMiddleware:
         async def call_next(request):
             return mock_response
         
-        with patch('deepnovel.api.middleware.logger') as mock_logger:
+        with patch('ai_novels.api.middleware.logger') as mock_logger:
             response = await middleware.dispatch(mock_request, call_next)
             
             # 验证请求被记录
@@ -216,7 +216,7 @@ class TestLoggingMiddleware:
         async def call_next(request):
             return mock_response
         
-        with patch('deepnovel.api.middleware.logger') as mock_logger:
+        with patch('ai_novels.api.middleware.logger') as mock_logger:
             response = await middleware.dispatch(mock_request, call_next)
             
             # 验证日志未被记录
@@ -246,7 +246,7 @@ class TestLoggingMiddleware:
         async def call_next(request):
             return mock_response
         
-        with patch('deepnovel.api.middleware.logger') as mock_logger:
+        with patch('ai_novels.api.middleware.logger') as mock_logger:
             response = await middleware.dispatch(mock_request, call_next)
             
             # 验证请求被记录（LoggingMiddleware只记录请求开始，不区分成功/错误）

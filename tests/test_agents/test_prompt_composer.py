@@ -4,7 +4,7 @@ PromptComposer 单元测试
 
 import pytest
 
-from deepnovel.agents.prompt_composer import PromptComposer, PromptTemplate, get_default_templates
+from ai_novels.agents.prompt_composer import PromptComposer, PromptTemplate, get_default_templates
 
 
 class TestPromptTemplate:

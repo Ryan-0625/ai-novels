@@ -10,7 +10,7 @@ mkdir -p "$PROJECT_DIR/logs"
 start_server() {
     echo "Starting server on port 8006..."
     cd "$PROJECT_DIR"
-    e:/Python/Python3.13/python -m uvicorn src.deepnovel.api.main:app \
+    e:/Python/Python3.13/python -m uvicorn src.ai_novels.api.main:app \
         --host 0.0.0.0 --port 8006 --reload 2>&1 | tee "$PROJECT_DIR/logs/server.log"
 }
 

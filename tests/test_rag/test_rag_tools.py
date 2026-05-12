@@ -6,15 +6,15 @@ RAG Agent 工具单元测试
 
 import pytest
 
-from deepnovel.agents.tools.rag_tools import (
+from ai_novels.agents.tools.rag_tools import (
     DocumentIndexTool,
     DocumentRetrieveTool,
     KnowledgeBaseTool,
 )
-from deepnovel.rag import RAGEngine, RAGConfig
-from deepnovel.rag.chunker import Chunk
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
-from conftest import InMemoryTestEmbedder
+from ai_novels.rag import RAGEngine, RAGConfig
+from ai_novels.rag.chunker import Chunk
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
+from tests.test_rag.conftest import InMemoryTestEmbedder
 
 
 @pytest.fixture

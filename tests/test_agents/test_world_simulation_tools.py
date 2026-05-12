@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.agents.tools import (
+from ai_novels.agents.tools import (
     WorldStateTool,
     CharacterMindTool,
     CausalReasoningTool,
     NarrativeRecordTool,
 )
-from deepnovel.models import Fact, Event, Narrative, NarrativeType, Character
-from deepnovel.repositories import CharacterRepository
-from deepnovel.services import WorldStateService, EventService, NarrativeService
-from deepnovel.services.world_rule_service import WorldRuleService
+from ai_novels.models import Fact, Event, Narrative, NarrativeType, Character
+from ai_novels.repositories import CharacterRepository
+from ai_novels.services import WorldStateService, EventService, NarrativeService
+from ai_novels.services.world_rule_service import WorldRuleService
 
 
 class TestWorldStateTool:

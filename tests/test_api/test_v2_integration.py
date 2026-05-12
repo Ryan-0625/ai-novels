@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from deepnovel.api.routes.task_routes import router as task_router
+from ai_novels.api.routes.task_routes import router as task_router
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ class TestSSEEndpoint:
         import asyncio
         import json
         from fastapi.responses import StreamingResponse
-        from deepnovel.core.event_bus import EventBus, EventType
+        from ai_novels.core.event_bus import EventBus, EventType
 
         # 独立的事件总线
         test_bus = EventBus()

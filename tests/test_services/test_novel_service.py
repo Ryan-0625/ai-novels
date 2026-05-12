@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.models import Novel
-from deepnovel.repositories import NovelRepository
-from deepnovel.services import NovelService
+from ai_novels.models import Novel
+from ai_novels.repositories import NovelRepository
+from ai_novels.services import NovelService
 
 
 class TestNovelService:

@@ -6,17 +6,17 @@ import asyncio
 
 import pytest
 
-from deepnovel.agents.base import AgentConfig, Message, MessageType
-from deepnovel.agents.task_orchestrator import (
+from ai_novels.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.task_orchestrator import (
     DAGTaskNode,
     QueuedTask,
     TaskOrchestrator,
     TaskPriority,
     WorkerSlot,
 )
-from deepnovel.agents.workflow_orchestrator import TaskState
-from deepnovel.agents.tool_enabled_agent import ToolEnabledAgent, ToolEnabledAgentConfig
-from deepnovel.core.event_bus import EventBus, EventType
+from ai_novels.agents.workflow_orchestrator import TaskState
+from ai_novels.agents.tool_enabled_agent import ToolEnabledAgent, ToolEnabledAgentConfig
+from ai_novels.core.event_bus import EventBus, EventType
 
 
 # ---- Fixtures ----
@@ -390,7 +390,7 @@ class TestEventIntegration:
 class TestWorkflowAdapter:
     @pytest.mark.asyncio
     async def test_execute_workflow(self, event_bus, mock_agent):
-        from deepnovel.agents.workflow_orchestrator import (
+        from ai_novels.agents.workflow_orchestrator import (
             WorkflowDefinition,
             WorkflowStage,
         )

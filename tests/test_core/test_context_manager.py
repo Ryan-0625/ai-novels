@@ -11,7 +11,7 @@ from typing import List
 import sys
 sys.path.insert(0, "e:/VScode(study)/Project/AI-Novels/src")
 
-from deepnovel.core.context_manager import (
+from ai_novels.core.context_manager import (
     ContextManager,
     ContextItem,
     ContextScope,

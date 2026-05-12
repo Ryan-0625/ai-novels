@@ -14,8 +14,8 @@ InMemoryVectorStore 单元测试
 
 import pytest
 
-from deepnovel.vector_store.enhanced_base import VectorDocument
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
+from ai_novels.vector_store.enhanced_base import VectorDocument
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
 
 
 class TestInMemoryVectorStore:

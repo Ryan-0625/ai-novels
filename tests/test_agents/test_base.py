@@ -11,7 +11,7 @@ import uuid
 from typing import Optional
 from unittest.mock import Mock, patch, MagicMock
 
-from deepnovel.agents.base import (
+from ai_novels.agents.base import (
     AgentState, MessageType, Message, AgentConfig,
     BaseAgent, AgentRouter
 )
@@ -207,7 +207,7 @@ class TestAgentConfig:
     
     def test_agent_config_from_config_none(self):
         """测试从None配置创建AgentConfig使用全局设置"""
-        with patch('deepnovel.agents.base.settings') as mock_settings:
+        with patch('ai_novels.agents.base.settings') as mock_settings:
             mock_settings.get_agent.return_value = {
                 "provider": "gemini",
                 "model": "gemini-pro"

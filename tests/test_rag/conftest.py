@@ -4,7 +4,7 @@ RAG 测试共享 fixture — 使用内存 Mock 嵌入器，不依赖外部服务
 
 from typing import List
 
-from deepnovel.llm.embedding_adapter import BaseEmbeddingBackend, EmbeddingConfig
+from ai_novels.llm.embedding_adapter import BaseEmbeddingBackend, EmbeddingConfig
 
 
 class InMemoryTestEmbedder(BaseEmbeddingBackend):

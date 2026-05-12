@@ -12,8 +12,8 @@ import asyncio
 import pytest
 import redis.asyncio as redis
 
-from deepnovel.core.event_bus import Event, EventPriority, EventType
-from deepnovel.core.redis_event_bus import RedisEventBus
+from ai_novels.core.event_bus import Event, EventPriority, EventType
+from ai_novels.core.redis_event_bus import RedisEventBus
 
 
 class TestRedisEventBusUnit:

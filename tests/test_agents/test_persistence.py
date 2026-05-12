@@ -21,11 +21,11 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 import pytest
-from deepnovel.persistence import (
+from ai_novels.persistence import (
     PersistenceManager, get_persistence_manager,
     CharacterPersistence, WorldPersistence, OutlinePersistence, ChapterPersistence
 )
-from deepnovel.persistence.agent_persist import save_character_to_db, save_chapter_to_db
+from ai_novels.persistence.agent_persist import save_character_to_db, save_chapter_to_db
 
 
 @pytest.fixture

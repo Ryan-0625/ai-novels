@@ -6,10 +6,10 @@
 
 import pytest
 
-from deepnovel.rag.chunker import Chunk
-from deepnovel.rag.indexer import DocumentIndexer
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
-from conftest import InMemoryTestEmbedder
+from ai_novels.rag.chunker import Chunk
+from ai_novels.rag.indexer import DocumentIndexer
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
+from tests.test_rag.conftest import InMemoryTestEmbedder
 
 
 class TestDocumentIndexer:
@@ -66,7 +66,7 @@ class TestDocumentIndexer:
     @pytest.mark.asyncio
     async def test_index_text_with_custom_chunker(self, indexer):
         """使用自定义 chunker"""
-        from deepnovel.rag.chunker import TextChunker, ChunkStrategy
+        from ai_novels.rag.chunker import TextChunker, ChunkStrategy
 
         chunker = TextChunker(
             strategy=ChunkStrategy.FIXED,

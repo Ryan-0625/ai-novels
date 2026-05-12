@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.models import Task
-from deepnovel.models.task import TaskStatus
-from deepnovel.repositories import TaskRepository
-from deepnovel.services import TaskService
+from ai_novels.models import Task
+from ai_novels.models.task import TaskStatus
+from ai_novels.repositories import TaskRepository
+from ai_novels.services import TaskService
 
 
 class TestTaskService:

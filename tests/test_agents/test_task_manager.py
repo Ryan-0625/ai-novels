@@ -9,8 +9,8 @@ TaskManagerAgent 单元测试
 
 import pytest
 
-from deepnovel.agents.implementations import TaskManagerAgent
-from deepnovel.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.implementations import TaskManagerAgent
+from ai_novels.agents.base import AgentConfig, Message, MessageType
 
 
 @pytest.fixture
@@ -36,6 +36,8 @@ class TestTaskManagerProcess:
         assert result.type == MessageType.TEXT
 
     def test_update_task(self, agent):
+        # 先创建任务，再更新（新 TaskManagerAgent 要求先有任务）
+        agent.process(Message(id="t0", type=MessageType.TEXT, content="create new task"))
         msg = Message(id="t2", type=MessageType.TEXT, content="update task status")
         result = agent.process(msg)
         assert result is not None

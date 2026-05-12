@@ -11,7 +11,7 @@ if project_root not in sys.path:
 
 os.chdir(project_root)
 
-from src.deepnovel.api.main import app
+from src.ai_novels.api.main import app
 import uvicorn
 
 if __name__ == "__main__":

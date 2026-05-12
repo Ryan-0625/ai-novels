@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from deepnovel.models import (
+from ai_novels.models import (
     Fact,
     FactType,
     FactSource,
@@ -21,7 +21,7 @@ from deepnovel.models import (
     WorldRule,
     RuleType,
 )
-from deepnovel.repositories import (
+from ai_novels.repositories import (
     FactRepository,
     EventRepository,
     NarrativeRepository,

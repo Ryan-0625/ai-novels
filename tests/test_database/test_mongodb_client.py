@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 from pymongo.errors import PyMongoError, ConnectionFailure
 from bson import ObjectId
 
-from deepnovel.database.mongodb_client import MongoDBClient
+from ai_novels.database.mongodb_client import MongoDBClient
 
 
 class TestMongoDBClientInit:
@@ -38,7 +38,7 @@ class TestMongoDBClientInit:
     
     def test_init_with_default_config(self):
         """测试使用默认配置初始化"""
-        with patch('deepnovel.database.mongodb_client.settings') as mock_settings:
+        with patch('ai_novels.database.mongodb_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {
                 "host": "localhost",
                 "port": 27017,
@@ -58,7 +58,7 @@ class TestMongoDBClientInit:
     
     def test_init_with_explicit_params(self):
         """测试使用显式参数初始化"""
-        with patch('deepnovel.database.mongodb_client.settings') as mock_settings:
+        with patch('ai_novels.database.mongodb_client.settings') as mock_settings:
             mock_settings.get_database.return_value = {}
             
             client = MongoDBClient(
@@ -79,7 +79,7 @@ class TestMongoDBClientInit:
 class TestMongoDBClientConnect:
     """测试MongoDB连接功能"""
     
-    @patch('deepnovel.database.mongodb_client.MongoClient')
+    @patch('ai_novels.database.mongodb_client.MongoClient')
     def test_connect_with_auth_success(self, mock_client_class):
         """测试带认证连接成功"""
         mock_db = Mock()
@@ -102,7 +102,7 @@ class TestMongoDBClientConnect:
         assert client._is_connected is True
         mock_client_class.assert_called_once()
     
-    @patch('deepnovel.database.mongodb_client.MongoClient')
+    @patch('ai_novels.database.mongodb_client.MongoClient')
     def test_connect_without_auth_success(self, mock_client_class):
         """测试无认证连接成功"""
         mock_db = Mock()
@@ -124,7 +124,7 @@ class TestMongoDBClientConnect:
         assert result is True
         assert client._is_connected is True
     
-    @patch('deepnovel.database.mongodb_client.MongoClient')
+    @patch('ai_novels.database.mongodb_client.MongoClient')
     def test_connect_failure(self, mock_client_class):
         """测试连接失败"""
         mock_client_class.side_effect = ConnectionFailure("Connection refused")

@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock
 
-from deepnovel.messaging.rocketmq_consumer import (
+from ai_novels.messaging.rocketmq_consumer import (
     RocketMQConsumer,
     MessageHandler,
     ConsumerConfig,
@@ -77,8 +77,8 @@ class TestConsumerConfig:
 @pytest.fixture(autouse=True)
 def _patch_rocketmq():
     """自动 mock rocketmq 外部依赖"""
-    with patch('deepnovel.messaging.rocketmq_consumer._ROCKETMQ_AVAILABLE', True):
-        with patch('deepnovel.messaging.rocketmq_consumer.rocketmq', create=True) as mock_rmq:
+    with patch('ai_novels.messaging.rocketmq_consumer._ROCKETMQ_AVAILABLE', True):
+        with patch('ai_novels.messaging.rocketmq_consumer.rocketmq', create=True) as mock_rmq:
             mock_rmq.PushConsumer.return_value = MagicMock()
             yield
 

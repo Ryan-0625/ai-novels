@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     # 使用 uvicorn.run() 直接启动
     uvicorn.run(
-        "src.deepnovel.api.main:app",
+        "src.ai_novels.api.main:app",
         host=host,
         port=port,
         reload=reload,

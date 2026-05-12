@@ -6,10 +6,10 @@
 
 import pytest
 
-from deepnovel.rag.retriever import RetrievedChunk, SemanticRetriever
-from deepnovel.vector_store import VectorDocument
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
-from conftest import InMemoryTestEmbedder
+from ai_novels.rag.retriever import RetrievedChunk, SemanticRetriever
+from ai_novels.vector_store import VectorDocument
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
+from tests.test_rag.conftest import InMemoryTestEmbedder
 
 
 class TestRetrievedChunk:

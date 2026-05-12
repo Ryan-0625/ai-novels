@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # 导入SQLModel和所有模型以获取metadata
 from sqlmodel import SQLModel
-from deepnovel.models import novel, chapter, narrative, task  # noqa: F401
+from ai_novels.models import novel, chapter, narrative, task  # noqa: F401
 
 # this is the Alembic Config object
 config = context.config

@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from deepnovel.config.app_config import AppConfig, LLMProviderConfig, get_config, reload_config
+from ai_novels.config.app_config import AppConfig, LLMProviderConfig, get_config, reload_config
 
 
 class TestAppConfigDefaults:
@@ -46,7 +46,7 @@ class TestAppConfigDefaults:
         """Redis子配置必须有默认值"""
         config = AppConfig()
         assert config.redis.url == "redis://localhost:6379/0"
-        assert config.redis.stream_key == "deepnovel:events"
+        assert config.redis.stream_key == "ai_novels:events"
 
     def test_llm_defaults(self):
         """LLM子配置必须有默认值"""

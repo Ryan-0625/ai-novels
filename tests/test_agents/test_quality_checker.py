@@ -10,8 +10,8 @@ QualityCheckerAgent 单元测试
 import pytest
 from unittest.mock import patch
 
-from deepnovel.agents.implementations import QualityCheckerAgent
-from deepnovel.agents.base import AgentConfig, Message, MessageType
+from ai_novels.agents.implementations import QualityCheckerAgent
+from ai_novels.agents.base import AgentConfig, Message, MessageType
 
 
 @pytest.fixture

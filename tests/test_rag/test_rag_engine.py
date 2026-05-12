@@ -6,10 +6,10 @@ RAG 引擎单元测试
 
 import pytest
 
-from deepnovel.rag import RAGConfig, RAGResult, RAGEngine
-from deepnovel.rag.chunker import Chunk, ChunkStrategy
-from deepnovel.vector_store.memory_store import InMemoryVectorStore
-from conftest import InMemoryTestEmbedder
+from ai_novels.rag import RAGConfig, RAGResult, RAGEngine
+from ai_novels.rag.chunker import Chunk, ChunkStrategy
+from ai_novels.vector_store.memory_store import InMemoryVectorStore
+from tests.test_rag.conftest import InMemoryTestEmbedder
 
 
 class TestRAGConfig:
@@ -38,7 +38,7 @@ class TestRAGResult:
         assert result.context_text == ""
 
     def test_context_text(self):
-        from deepnovel.rag.retriever import RetrievedChunk
+        from ai_novels.rag.retriever import RetrievedChunk
 
         result = RAGResult(
             query="test",
@@ -53,7 +53,7 @@ class TestRAGResult:
         assert "[2] 内容B" in context
 
     def test_sources(self):
-        from deepnovel.rag.retriever import RetrievedChunk
+        from ai_novels.rag.retriever import RetrievedChunk
 
         result = RAGResult(
             query="test",

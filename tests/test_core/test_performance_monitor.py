@@ -8,7 +8,7 @@
 
 import pytest
 import time
-from deepnovel.core.performance_monitor import (
+from ai_novels.core.performance_monitor import (
     PerformanceMonitor,
     MetricType,
     MetricValue,
