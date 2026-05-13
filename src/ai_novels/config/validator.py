@@ -226,7 +226,7 @@ class AINovelsSchemas:
             "properties": {
                 "provider": {
                     "type": "string",
-                    "enum": ["openai", "ollama", "qwen", "gemini", "minimax"]
+                    "enum": ["openai", "ollama", "qwen", "gemini", "minimax", "deepseek"]
                 },
                 "api_key": {
                     "type": "string"

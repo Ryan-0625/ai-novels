@@ -7,6 +7,10 @@ import '@/assets/styles/tailwind.css'
 
 import App from './App.vue'
 import router from './router'
+import { clearStaleCaches } from '@/utils/cache'
+
+// 清除过期缓存
+clearStaleCaches()
 
 // 创建Vue应用实例
 const app = createApp(App)

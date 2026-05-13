@@ -2,7 +2,7 @@
 import { ref, reactive, watch, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import api from '@/services/api'
+import apiV2 from '@/services/api-v2'
 import { logError } from '@/utils/logger'
 import { MagicStick, Document, Setting, Brush, InfoFilled } from '@element-plus/icons-vue'
 
@@ -61,8 +61,115 @@ const form = reactive({
   target_audience: 'general',
 })
 
-// 页面挂载时恢复草稿
+// LLM 模型名称（从后端配置获取）
+const aiModelName = ref('Qwen2.5-7B')
+
+const fetchModelName = async () => {
+  try {
+    const resp = await apiV2.getConfigItem('llm')
+    if (resp?.value) {
+      const llmConfig = resp.value
+      const provider = llmConfig.default_provider || llmConfig.provider || 'ollama'
+      const providerCfg = llmConfig.providers?.[provider] || llmConfig[provider]
+      if (providerCfg?.model) {
+        aiModelName.value = providerCfg.model
+      } else if (llmConfig.model) {
+        aiModelName.value = llmConfig.model
+      }
+    }
+  } catch {
+    // 保留默认值 'Qwen2.5-7B'
+  }
+}
+
+// 从后端获取预设配置
+const fetchGenres = async () => {
+  try {
+    const backendGenres = await apiV2.listNovelGenres()
+    if (backendGenres && backendGenres.length > 0) {
+      const genreIcons: Record<string, { icon: string; color: string }> = {
+        fantasy: { icon: '✨', color: '#a855f7' },
+        'sci-fi': { icon: '🚀', color: '#3b82f6' },
+        wuxia: { icon: '⚔️', color: '#f59e0b' },
+        xianxia: { icon: '☯️', color: '#8b5cf6' },
+        romance: { icon: '💕', color: '#ec4899' },
+        mystery: { icon: '🔍', color: '#6366f1' },
+        horror: { icon: '👻', color: '#ef4444' },
+        thriller: { icon: '🔥', color: '#f97316' },
+        history: { icon: '📜', color: '#10b981' },
+        adventure: { icon: '🌊', color: '#14b8a6' },
+        drama: { icon: '🎭', color: '#06b6d4' },
+        urban_fantasy: { icon: '🏙️', color: '#78716c' },
+        other: { icon: '📖', color: '#6b7280' },
+      }
+      const merged = new Map<string, any>()
+      backendGenres.forEach((g: any) => {
+        const style = genreIcons[g.value] || { icon: '📖', color: '#6b7280' }
+        merged.set(g.value, { label: g.label, value: g.value, icon: style.icon, color: style.color })
+      })
+      genreOptions.value = Array.from(merged.values())
+    }
+  } catch {
+    // 使用本地硬编码作为后备
+  }
+}
+
+const fetchPresets = async () => {
+  try {
+    const presets = await apiV2.listNovelPresets()
+    if (presets && presets.length > 0) {
+      const genreIcons: Record<string, { icon: string; color: string }> = {
+        fantasy: { icon: '✨', color: '#a855f7' },
+        'sci-fi': { icon: '🚀', color: '#3b82f6' },
+        wuxia: { icon: '⚔️', color: '#f59e0b' },
+        xianxia: { icon: '☯️', color: '#8b5cf6' },
+        romance: { icon: '💕', color: '#ec4899' },
+        mystery: { icon: '🔍', color: '#6366f1' },
+        horror: { icon: '👻', color: '#ef4444' },
+        thriller: { icon: '🔥', color: '#f97316' },
+        history: { icon: '📜', color: '#10b981' },
+        adventure: { icon: '🌊', color: '#14b8a6' },
+        drama: { icon: '🎭', color: '#06b6d4' },
+        urban_fantasy: { icon: '🏙️', color: '#78716c' },
+        other: { icon: '📖', color: '#6b7280' },
+      }
+      const serverGenres = presets.map((p: any) => {
+        const style = genreIcons[p.genre] || { icon: '📖', color: '#6b7280' }
+        return { label: p.title || p.genre, value: p.genre, icon: style.icon, color: style.color }
+      })
+      // 合并后端预设与本地硬编码，后端优先
+      const merged = new Map<string, any>()
+      for (const g of genreOptions.value) merged.set(g.value, g)
+      for (const g of serverGenres) merged.set(g.value, g)
+      genreOptions.value = Array.from(merged.values())
+    }
+  } catch {
+    // 使用本地硬编码的 genreOptions 作为后备
+  }
+}
+
+// 从后端获取风格配置
+const fetchStyles = async () => {
+  try {
+    const backendStyles = await apiV2.listNovelStyles()
+    if (backendStyles && backendStyles.length > 0) {
+      styleOptions.value = backendStyles.map((s: any) => ({
+        label: s.label,
+        value: s.value,
+        desc: s.desc || '',
+      }))
+    }
+  } catch {
+    // 使用本地硬编码作为后备
+  }
+}
+
+// 页面挂载时恢复草稿、获取预设
 onMounted(() => {
+  fetchGenres()
+  fetchPresets()
+  fetchStyles()
+  fetchModelName()
   const raw = localStorage.getItem(DRAFT_KEY)
   if (!raw) return
   try {
@@ -128,23 +235,29 @@ const formRef = ref()
 const router = useRouter()
 
 // ── 可选值 ────────────────────────────────────────────────
-const genreOptions = [
-  { label: '玄幻', value: 'fantasy', icon: '✨', color: '#a855f7' },
-  { label: '武侠', value: 'wuxia', icon: '⚔️', color: '#f59e0b' },
-  { label: '都市', value: 'city', icon: '🏙️', color: '#06b6d4' },
+const genreOptions = ref([
+  { label: '奇幻', value: 'fantasy', icon: '✨', color: '#a855f7' },
   { label: '科幻', value: 'sci-fi', icon: '🚀', color: '#3b82f6' },
+  { label: '武侠', value: 'wuxia', icon: '⚔️', color: '#f59e0b' },
+  { label: '修仙', value: 'xianxia', icon: '☯️', color: '#8b5cf6' },
   { label: '言情', value: 'romance', icon: '💕', color: '#ec4899' },
+  { label: '悬疑', value: 'mystery', icon: '🔍', color: '#6366f1' },
+  { label: '灵异', value: 'horror', icon: '👻', color: '#ef4444' },
+  { label: '惊悚', value: 'thriller', icon: '🔥', color: '#f97316' },
   { label: '历史', value: 'history', icon: '📜', color: '#10b981' },
-  { label: '灵异', value: 'mystery', icon: '👻', color: '#6366f1' },
-]
+  { label: '冒险', value: 'adventure', icon: '🌊', color: '#14b8a6' },
+  { label: '剧情', value: 'drama', icon: '🎭', color: '#06b6d4' },
+  { label: '都市', value: 'urban_fantasy', icon: '🏙️', color: '#78716c' },
+  { label: '其他', value: 'other', icon: '📖', color: '#6b7280' },
+])
 
-const styleOptions = [
+const styleOptions = ref([
   { label: '轻松', value: 'light', desc: '轻松愉快的叙事风格' },
   { label: '严肃', value: 'serious', desc: '庄重严谨的叙事风格' },
   { label: '幽默', value: 'humor', desc: '诙谐幽默的叙事风格' },
   { label: '热血', value: 'passion', desc: '激情澎湃的叙事风格' },
   { label: '悬疑', value: 'suspense', desc: '紧张刺激的叙事风格' },
-]
+])
 
 // ── 表单提交 ──────────────────────────────────────────────
 const handleSubmit = async () => {
@@ -152,16 +265,20 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     loading.value = true
-    const response = await api.createTask({
-      user_id: form.user_id,
-      task_type: form.task_type,
-      genre: form.genre,
-      title: form.title,
-      description: form.description,
-      chapters: form.chapters,
-      word_count_per_chapter: form.word_count_per_chapter,
-      style: form.style,
-      target_audience: form.target_audience,
+    const response = await apiV2.createTask({
+      agent_name: 'coordinator',
+      payload: {
+        user_id: form.user_id,
+        task_type: form.task_type,
+        genre: form.genre,
+        title: form.title,
+        description: form.description,
+        chapters: form.chapters,
+        word_count_per_chapter: form.word_count_per_chapter,
+        style: form.style,
+        target_audience: form.target_audience,
+        language: localStorage.getItem('ai-novels-lang') || 'zh-CN',
+      },
     })
     if (response && response.task_id) {
       clearDraft()   // 提交成功后清除草稿
@@ -187,7 +304,7 @@ const handleReset = () => {
 }
 
 // ── 当前选中类型 ──────────────────────────────────────────
-const selectedGenre = computed(() => genreOptions.find(g => g.value === form.genre))
+const selectedGenre = computed(() => genreOptions.value.find(g => g.value === form.genre))
 </script>
 
 <template>
@@ -376,7 +493,7 @@ const selectedGenre = computed(() => genreOptions.find(g => g.value === form.gen
             <div class="preview-divider"></div>
             <div class="preview-item">
               <span class="preview-label">AI 模型</span>
-              <span class="preview-value">Qwen2.5-14B</span>
+              <span class="preview-value">{{ aiModelName }}</span>
             </div>
           </div>
         </div>

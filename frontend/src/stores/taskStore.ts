@@ -1,8 +1,7 @@
 /* Pinia 任务状态管理 (Step 12/13) */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import apiV2, { type TaskItem } from '@/services/api-v2'
-import { wsService } from '@/services/websocket'
+import apiV2, { connectSSE, type SSEEvent, type TaskItem } from '@/services/api-v2'
 
 export interface TaskFilter {
   status?: string
@@ -15,7 +14,8 @@ export const useTaskStore = defineStore('task', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const selectedTaskId = ref<string | null>(null)
-  const wsConnected = ref(false)
+  const sseConnected = ref(false)
+  let _disconnectSSE: (() => void) | null = null
 
   // Getters
   const taskCount = computed(() => tasks.value.length)
@@ -72,32 +72,33 @@ export const useTaskStore = defineStore('task', () => {
     selectedTaskId.value = taskId
   }
 
-  function updateTaskFromWS(payload: any) {
-    const idx = tasks.value.findIndex(t => t.task_id === payload.task_id)
-    if (idx >= 0) {
-      tasks.value[idx] = { ...tasks.value[idx], ...payload }
-    } else if (payload.task_id) {
-      tasks.value.push(payload)
+  /** 连接SSE以接收实时任务更新 */
+  function connectSSEStream() {
+    if (_disconnectSSE) return
+    _disconnectSSE = connectSSE(
+      (event: SSEEvent) => {
+        if (['task.created', 'task.started', 'task.completed', 'task.failed', 'task.progress'].includes(event.type)) {
+          fetchTasks()
+        }
+      },
+      () => { sseConnected.value = false },
+      () => { sseConnected.value = true },
+      () => { sseConnected.value = false },
+    )
+  }
+
+  function disconnectSSEStream() {
+    if (_disconnectSSE) {
+      _disconnectSSE()
+      _disconnectSSE = null
     }
-  }
-
-  function connectWS() {
-    wsService.connect({
-      onOpen: () => { wsConnected.value = true },
-      onClose: () => { wsConnected.value = false },
-      onTaskUpdate: updateTaskFromWS,
-    })
-  }
-
-  function disconnectWS() {
-    wsService.disconnect()
-    wsConnected.value = false
+    sseConnected.value = false
   }
 
   return {
-    tasks, loading, error, selectedTaskId, wsConnected,
+    tasks, loading, error, selectedTaskId, sseConnected,
     taskCount, runningCount, idleCount, filteredTasks, selectedTask,
     fetchTasks, getTaskDetail, actionTask, selectTask,
-    updateTaskFromWS, connectWS, disconnectWS,
+    connectSSEStream, disconnectSSEStream,
   }
 })

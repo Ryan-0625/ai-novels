@@ -28,6 +28,7 @@ class LLMProvider(Enum):
     QWEN = "qwen"
     GEMINI = "gemini"
     MINIMAX = "minimax"
+    DEEPSEEK = "deepseek"
     LOCAL = "local"
 
 
@@ -565,6 +566,7 @@ class LLMRouter:
         LLMProvider.QWEN: QwenClient,
         LLMProvider.GEMINI: GeminiClient,
         LLMProvider.MINIMAX: MinimaxClient,
+        LLMProvider.DEEPSEEK: OpenAIClient,
         LLMProvider.LOCAL: OllamaClient
     }
 

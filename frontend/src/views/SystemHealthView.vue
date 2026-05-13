@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import api from '@/services/api'
+import apiV2 from '@/services/api-v2'
 import {
   OfficeBuilding,
   Connection,
@@ -121,14 +121,33 @@ const groupedComponents = computed(() => {
 const checkSystemHealth = async () => {
   loading.value = true
   try {
-    const response = await api.getSystemHealthFull(true)
+    const response = await apiV2.getSystemHealthFull(true)
     if (response) {
       overallStatus.value = response.overall_status || 'unknown'
-      components.value = response.components || {}
-      healthyCount.value = response.healthy_count || 0
-      degradedCount.value = response.degraded_count || 0
-      unhealthyCount.value = response.unhealthy_count || 0
-      lastCheck.value = response.last_check || 0
+
+      // 后端返回 components[name] = ComponentHealth dict (含 type/latency_ms/last_check)
+      const flatComponents: Record<string, ComponentHealth> = {}
+      if (response.components) {
+        for (const [name, comp] of Object.entries(response.components)) {
+          if (comp && typeof comp === 'object') {
+            const ch = comp as any
+            // 兼容新旧格式
+            if (ch.type) {
+              flatComponents[name] = ch as ComponentHealth
+            } else if (ch.status && typeof ch.status === 'object') {
+              flatComponents[name] = { name, ...ch.status } as ComponentHealth
+            } else {
+              flatComponents[name] = { name, status: ch.status || 'unknown', type: '', latency_ms: 0, details: {}, last_check: 0 }
+            }
+          }
+        }
+      }
+      components.value = flatComponents
+
+      healthyCount.value = Object.values(flatComponents).filter(c => c.status === 'healthy').length
+      degradedCount.value = Object.values(flatComponents).filter(c => c.status === 'degraded').length
+      unhealthyCount.value = Object.values(flatComponents).filter(c => c.status === 'unhealthy').length
+      lastCheck.value = response.last_check || Date.now() / 1000
       connections.value = response.connections || {}
     }
   } catch (error) {
@@ -141,9 +160,18 @@ const checkSystemHealth = async () => {
 const checkComponent = async (componentName: string) => {
   loading.value = true
   try {
-    const response = await api.getComponentHealth(componentName)
+    const response = await apiV2.getComponentHealth(componentName)
     if (response) {
-      components.value[componentName] = response
+      // 后端返回 ComponentHealth dict (含 type/latency_ms/last_check)
+      components.value[componentName] = {
+        name: componentName,
+        status: response.status || 'unknown',
+        type: response.type || '',
+        latency_ms: response.latency_ms || 0,
+        details: response.details || {},
+        last_check: response.last_check || 0,
+        error: response.error,
+      } as ComponentHealth
     }
   } catch (error) {
     console.error(`检查组件 ${componentName} 状态失败:`, error)
@@ -301,8 +329,8 @@ onMounted(() => {
         :loading="loading"
         class="refresh-btn"
       >
-        <el-icon :size="16"><Refresh /></el-icon>
-        <span>刷新状态</span>
+        <el-icon v-if="!loading" :size="16"><Refresh /></el-icon>
+        <span>{{ loading ? '刷新中...' : '刷新状态' }}</span>
       </el-button>
     </div>
 
@@ -415,8 +443,8 @@ onMounted(() => {
               @click="checkComponent(component.name)"
               :loading="loading"
             >
-              <el-icon><Refresh /></el-icon>
-              重新检查
+              <el-icon v-if="!loading"><Refresh /></el-icon>
+              {{ loading ? '检查中' : '重新检查' }}
             </el-button>
           </div>
         </div>
@@ -475,6 +503,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
+@import '@/styles/glassmorphism.css';
+
 .system-health-view {
   max-width: 1400px;
   margin: 0 auto;

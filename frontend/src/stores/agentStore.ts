@@ -1,15 +1,15 @@
 /* Pinia Agent 状态管理 (Step 12/13) */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import apiV2, { type AgentInfo } from '@/services/api-v2'
-import { wsService } from '@/services/websocket'
+import apiV2, { connectSSE, type SSEEvent, type AgentInfo } from '@/services/api-v2'
 
 export const useAgentStore = defineStore('agent', () => {
   const agents = ref<AgentInfo[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   const selectedAgent = ref<string | null>(null)
-  const wsConnected = ref(false)
+  const sseConnected = ref(false)
+  let _disconnectSSE: (() => void) | null = null
 
   const activeCount = computed(() => agents.value.filter(a => a.status === 'busy').length)
   const idleCount = computed(() => agents.value.filter(a => a.status === 'idle').length)
@@ -35,30 +35,33 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  function updateAgentFromWS(payload: any) {
-    const idx = agents.value.findIndex(a => a.name === payload.name)
-    if (idx >= 0) {
-      agents.value[idx] = { ...agents.value[idx], ...payload }
+  /** 连接SSE以接收实时agent状态更新 */
+  function connectSSEStream() {
+    if (_disconnectSSE) return
+    _disconnectSSE = connectSSE(
+      (event: SSEEvent) => {
+        if (['agent.started', 'agent.completed', 'agent.failed', 'agent.message'].includes(event.type)) {
+          fetchAgents()
+        }
+      },
+      () => { sseConnected.value = false },
+      () => { sseConnected.value = true },
+      () => { sseConnected.value = false },
+    )
+  }
+
+  function disconnectSSEStream() {
+    if (_disconnectSSE) {
+      _disconnectSSE()
+      _disconnectSSE = null
     }
-  }
-
-  function connectWS() {
-    wsService.connect({
-      onOpen: () => { wsConnected.value = true },
-      onClose: () => { wsConnected.value = false },
-      onAgentStatus: updateAgentFromWS,
-    })
-  }
-
-  function disconnectWS() {
-    wsService.disconnect()
-    wsConnected.value = false
+    sseConnected.value = false
   }
 
   return {
-    agents, loading, error, selectedAgent, wsConnected,
+    agents, loading, error, selectedAgent, sseConnected,
     activeCount, idleCount,
     fetchAgents, getAgentMetrics,
-    updateAgentFromWS, connectWS, disconnectWS,
+    connectSSEStream, disconnectSSEStream,
   }
 })

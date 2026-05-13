@@ -110,11 +110,12 @@ class QualityCheckerAgent(BaseAgent):
             config = AgentConfig(
                 name="quality_checker",
                 description="Content quality verification",
-                provider="ollama",
-                model="qwen2.5-7b",
+                model="deepseek-v4-flash",
                 max_tokens=4096
             )
         super().__init__(config)
+        # 使用全局默认 LLM 提供商而非硬编码 ollama
+        self._llm_provider = None  # 由 router 自动选择默认提供商
 
         # 质量问题存储
         self._issues: List[QualityIssue] = []

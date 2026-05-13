@@ -406,43 +406,91 @@ class TaskController:
                                     v = coordinator._current_task.get(k)
                                     if v:
                                         setattr(task_obj, k, v)
+                                # 保存完整的增强配置到 result 字段
+                                enhanced = {}
+                                for ek in ["protagonist_name", "language", "characters_summary", "world_setting", "description", "style", "genre", "target_audience"]:
+                                    ev = coordinator._current_task.get(ek)
+                                    if ev:
+                                        enhanced[ek] = ev
+                                if enhanced:
+                                    task_obj.result = {**task_obj.result, "enhanced_config": enhanced}
                                 await self._repo.update(session, task_obj)
 
-                    # 发射 task.progress SSE 事件
+                    # 发射 task.progress SSE 事件（含章节级进度追踪）
                     try:
-                        progress = coordinator._calculate_progress()
+                        # === 综合进度计算：预生成阶段 + 章节生成阶段 ===
+                        total_chapters = request.chapters or 20
+                        chapter_weight = min(0.70, total_chapters * 0.035)  # 每章约3.5%，最多70%
+                        pre_gen_weight = 1.0 - chapter_weight  # 预生成/后处理占剩余
+
+                        # 统计 DAG 节点完成情况
+                        dag_completed = 0
+                        dag_total = 0
+                        chapter_nodes_total = 0
+                        chapter_nodes_completed = 0
                         stage_statuses = {}
                         if coordinator._dag:
                             for nname, nnode in coordinator._dag.nodes.items():
+                                status_str = nnode.status.value if hasattr(nnode.status, 'value') else str(nnode.status)
                                 stage_statuses[nname] = {
-                                    "status": nnode.status.value if hasattr(nnode.status, 'value') else str(nnode.status),
+                                    "status": status_str,
                                     "elapsed": getattr(nnode, 'elapsed_time', 0) or 0,
                                 }
-                        chapters_info = {"total": request.chapters or 20, "completed": 0, "generating": 0}
+                                if nname.startswith("content_generator_chapter_"):
+                                    chapter_nodes_total += 1
+                                    if status_str == "completed":
+                                        chapter_nodes_completed += 1
+                                else:
+                                    dag_total += 1
+                                    if status_str == "completed":
+                                        dag_completed += 1
+
+                        # 预生成阶段进度
+                        pre_gen_progress = (dag_completed / max(1, dag_total)) * pre_gen_weight * 100 if dag_total > 0 else 0
+                        # 章节进度
+                        ch_progress = (chapter_nodes_completed / max(1, chapter_nodes_total)) * chapter_weight * 100 if chapter_nodes_total > 0 else 0
+                        # 综合进度
+                        combined_progress = pre_gen_progress + ch_progress
+
+                        chapters_info = {
+                            "total": total_chapters,
+                            "completed": chapter_nodes_completed,
+                            "generating": 0,
+                        }
                         if hasattr(coordinator, '_chapter_results'):
-                            chapters_info["completed"] = len([c for c in coordinator._chapter_results.values() if c.get("status") == "completed"])
-                            chapters_info["generating"] = len([c for c in coordinator._chapter_results.values() if c.get("status") == "running"])
+                            chapters_info["generating"] = len([
+                                c for c in coordinator._chapter_results.values() if c.get("status") == "running"
+                            ])
 
                         progress_payload = {
                             "task_id": task_id,
-                            "progress": float(progress),
+                            "progress": min(99.9, round(combined_progress, 1)),
+                            "chapter_progress": round(ch_progress / max(1, chapter_weight), 1) if chapter_weight > 0 else 0,
                             "current_stage": coordinator._current_task.get("description", ""),
                             "stage_statuses": stage_statuses,
                             "chapters": chapters_info,
                             "elapsed_seconds": time.time() - task_start_time,
                         }
+
                         # 估算生成速度和 ETA
                         elapsed = time.time() - task_start_time
-                        target_wc = (request.word_count_per_chapter or 2000) * (request.chapters or 5)
-                        pct = float(progress) / 100.0 if progress else 0
-                        total_wc = int(target_wc * pct) if pct > 0 else 0
-                        if elapsed > 5 and total_wc > 0:
-                            progress_payload["speed_wpm"] = round((total_wc / elapsed) * 60, 1)
-                            remaining = max(0, target_wc - total_wc)
-                            if progress_payload["speed_wpm"] > 0:
-                                progress_payload["eta_seconds"] = int(remaining / (progress_payload["speed_wpm"] / 60))
-                        progress_payload["total_words"] = total_wc
+                        target_wc = (request.word_count_per_chapter or 2000) * total_chapters
+                        words_per_chapter_estimate = 0
+                        if hasattr(coordinator, '_chapter_results') and chapter_nodes_completed > 0:
+                            wc_list = [c.get("word_count", 0) for c in coordinator._chapter_results.values() if c.get("word_count")]
+                            if wc_list:
+                                words_per_chapter_estimate = sum(wc_list) / len(wc_list)
+                        total_generated_wc = int(words_per_chapter_estimate * chapter_nodes_completed)
+                        progress_payload["total_words"] = total_generated_wc
                         progress_payload["target_words"] = target_wc
+                        if elapsed > 5 and total_generated_wc > 0:
+                            wpm = round((total_generated_wc / elapsed) * 60, 1)
+                            progress_payload["speed_wpm"] = wpm
+                            remaining_chapters = max(0, total_chapters - chapter_nodes_completed)
+                            if wpm > 0 and words_per_chapter_estimate > 0:
+                                remaining_words = remaining_chapters * words_per_chapter_estimate
+                                progress_payload["eta_seconds"] = int(remaining_words / (wpm / 60))
+
                         if loop.is_running():
                             loop.create_task(
                                 event_bus.publish_type(EventType.TASK_PROGRESS, payload=progress_payload, source="task_controller")
@@ -660,6 +708,7 @@ class StatusController:
             "word_count_per_chapter": task.word_count_per_chapter,
             "style": task.style,
             "target_audience": task.target_audience,
+            "enhanced_config": (task.result or {}).get("enhanced_config", {}),
         }
 
     async def get_task_logs(self, task_id: str, page: int, page_size: int):

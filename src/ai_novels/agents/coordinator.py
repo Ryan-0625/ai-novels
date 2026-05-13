@@ -782,15 +782,34 @@ Return as JSON with the same structure."""
         return "\n".join(output_lines)
 
     def _calculate_progress(self) -> float:
-        """计算进度"""
+        """计算进度（章节节点加权，反映真实完成度）"""
         if not self._dag or self._total_nodes == 0:
             return 0.0
 
-        completed = sum(
-            1 for node in self._dag.nodes.values()
-            if node.status == "completed"
-        )
-        return (completed / self._total_nodes) * 100
+        total_chapter = 0
+        done_chapter = 0
+        total_other = 0
+        done_other = 0
+
+        for node_name, node in self._dag.nodes.items():
+            is_chapter = node_name.startswith("content_generator_chapter_")
+            if is_chapter:
+                total_chapter += 1
+                if node.status == "completed":
+                    done_chapter += 1
+            else:
+                total_other += 1
+                if node.status == "completed":
+                    done_other += 1
+
+        # 章节节点占 60% 权重，其他（规划/润色等）占 40%
+        w_chapter = 0.60
+        w_other = 0.40
+
+        p_chapter = (done_chapter / max(1, total_chapter)) * w_chapter
+        p_other = (done_other / max(1, total_other)) * w_other
+
+        return round((p_chapter + p_other) * 100, 1)
 
     def execute_next_node(self) -> Optional[Dict[str, Any]]:
         """
@@ -906,6 +925,7 @@ Return as JSON with the same structure."""
         # 发布节点开始事件
         self._emit_event("agent.started", {
             "agent": node_name,
+            "agent_name": node_name,
             "stage": "dag_node_execution",
             "progress": self._calculate_progress() / 100.0,
             "total_nodes": self._total_nodes,
@@ -933,6 +953,7 @@ Return as JSON with the same structure."""
                     # 发射章节开始事件
                     self._emit_event("chapter.started", {
                         "chapter_num": chapter_num,
+                        "agent_name": node_name,
                         "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                         "title": self._current_task.get("title", "") if self._current_task else "",
                     })
@@ -952,6 +973,7 @@ Return as JSON with the same structure."""
                 "level": "info",
                 "message": f"Agent [{node_name}] 开始执行",
                 "agent": node_name,
+                "agent_name": node_name,
                 "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                 "elapsed": time.time() - start_time,
             })
@@ -999,6 +1021,7 @@ Return as JSON with the same structure."""
                                 "level": "warning",
                                 "message": f"Agent [{node_name}] 临时错误 (第{attempt + 1}次重试): {str(e)[:100]}",
                                 "agent": node_name,
+                                "agent_name": node_name,
                                 "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                                 "elapsed": time.time() - start_time,
                             })
@@ -1017,6 +1040,7 @@ Return as JSON with the same structure."""
                         # 发布节点失败事件
                         self._emit_event("agent.failed", {
                             "agent": node_name,
+                            "agent_name": node_name,
                             "stage": "dag_node_execution",
                             "error": str(last_error),
                             "progress": self._calculate_progress() / 100.0,
@@ -1027,6 +1051,7 @@ Return as JSON with the same structure."""
                             "level": "error",
                             "message": f"Agent [{node_name}] 执行失败: {str(last_error)[:200]}",
                             "agent": node_name,
+                            "agent_name": node_name,
                             "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                             "error": str(last_error),
                         })
@@ -1035,6 +1060,15 @@ Return as JSON with the same structure."""
 
                         if not is_critical:
                             log_warn(f"[{node_name}] Non-critical node failed. Skipping and continuing DAG.")
+                            # 发布节点跳过事件
+                            self._emit_event("agent.skipped", {
+                                "agent": node_name,
+                                "agent_name": node_name,
+                                "stage": "dag_node_execution",
+                                "error": str(last_error),
+                                "reason": "non_critical_failure",
+                                "progress": self._calculate_progress() / 100.0,
+                            })
                             result = {
                                 "node": node_name,
                                 "status": "skipped",
@@ -1057,18 +1091,58 @@ Return as JSON with the same structure."""
                         enhanced = str(result.get("result", "") or "")
                         import re, json
 
-                        # 尝试从 LLM 输出中提取 JSON
-                        json_match = re.search(r'\{[^{}]*\}', enhanced, re.DOTALL)
-                        if json_match:
-                            try:
-                                parsed = json.loads(json_match.group())
-                                if isinstance(parsed, dict):
-                                    for key, extract_key in [("description", "description"), ("style", "style"), ("genre", "genre"), ("target_audience", "target_audience")]:
-                                        val = parsed.get(extract_key) or parsed.get(key)
-                                        if val and isinstance(val, str) and len(val.strip()) > 1:
-                                            self._current_task[key] = val.strip()
-                            except json.JSONDecodeError:
-                                pass
+                        # 尝试从 LLM 输出中提取 JSON（支持嵌套花括号）
+                        def _extract_json(text):
+                            """从文本中提取第一个完整 JSON 对象（支持嵌套 {}）"""
+                            stack = []
+                            start = -1
+                            for i, ch in enumerate(text):
+                                if ch == '{':
+                                    if not stack:
+                                        start = i
+                                    stack.append(ch)
+                                elif ch == '}':
+                                    if stack:
+                                        stack.pop()
+                                        if not stack and start >= 0:
+                                            try:
+                                                return json.loads(text[start:i+1])
+                                            except json.JSONDecodeError:
+                                                return None
+                            return None
+
+                        parsed = _extract_json(enhanced)
+                        if isinstance(parsed, dict):
+                            for key, extract_key in [("description", "description"), ("style", "style"), ("genre", "genre"), ("target_audience", "target_audience")]:
+                                val = parsed.get(extract_key) or parsed.get(key)
+                                if val and isinstance(val, str) and len(val.strip()) > 1:
+                                    self._current_task[key] = val.strip()
+                            # 提取主角名
+                            protagonist_name = parsed.get("protagonist_name", "")
+                            if protagonist_name:
+                                self._current_task["protagonist_name"] = protagonist_name
+                            # 提取语言
+                            lang = parsed.get("language", "")
+                            if lang:
+                                self._current_task["language"] = lang
+                            # 提取角色列表（存入上下文供后续 Agent 使用）
+                            characters = parsed.get("characters", [])
+                            if isinstance(characters, list) and characters:
+                                char_summary = []
+                                for ch in characters:
+                                    if isinstance(ch, dict):
+                                        name = ch.get("name", "")
+                                        role = ch.get("role", "")
+                                        if name:
+                                            self._context.setdefault("characters", [])
+                                            self._context["characters"].append(f"{name} ({role})")
+                                            char_summary.append(f"{name}({role})")
+                                if char_summary:
+                                    self._current_task["characters_summary"] = ", ".join(char_summary)
+                            # 提取世界观
+                            world = parsed.get("world_setting", "")
+                            if world:
+                                self._current_task["world_setting"] = world
 
                         # Fallback: 尝试用 regex 提取（用于非 JSON 输出）
                         if not self._current_task.get("description"):
@@ -1095,6 +1169,17 @@ Return as JSON with the same structure."""
                                 val = audience_match.group(1).strip().lower()
                                 if val:
                                     self._current_task["target_audience"] = val
+                        # Fallback: 从原始请求的标题/描述中提取主角名
+                        if not self._current_task.get("protagonist_name"):
+                            desc = self._current_task.get("description", "") or ""
+                            # 匹配 "少年XXX" 或 "XXX踏入" 等常见主角名模式
+                            name_match = re.search(r'[少年少女]((?:[一-鿿]{2,4}))', desc)
+                            if not name_match:
+                                name_match = re.search(r'^((?:[一-鿿]{2,4}))[的]?故事', desc)
+                            if not name_match:
+                                name_match = re.search(r'((?:[一-鿿]{2,4}))(?:为父报仇|踏入|偶得|修炼|成长为)', desc)
+                            if name_match:
+                                self._current_task["protagonist_name"] = name_match.group(1).strip()
 
                         # 同步到 DB（通过控制器层在 execute_task 中完成）
                     except Exception:
@@ -1124,6 +1209,7 @@ Return as JSON with the same structure."""
                             "chapter_num": chapter_num,
                             "word_count": word_count,
                             "elapsed": elapsed,
+                            "agent_name": node_name,
                             "content_preview": content_preview,
                             "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                             "title": self._current_task.get("title", "") if self._current_task else "",
@@ -1133,19 +1219,23 @@ Return as JSON with the same structure."""
                             "chapter_num": chapter_num,
                             "content": content_preview,
                             "word_count": word_count,
+                            "agent_name": node_name,
                             "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                         })
                     except (ValueError, IndexError):
                         pass
 
                 # 发布节点完成事件
+                result_summary_short = str(result.get("result", ""))[:200] if result else ""
                 self._emit_event("agent.completed", {
                     "agent": node_name,
+                    "agent_name": node_name,
                     "stage": "dag_node_execution",
                     "progress": self._calculate_progress() / 100.0,
                     "elapsed_time": elapsed,
                     "total_nodes": self._total_nodes,
                     "completed_nodes": self._tasks_completed,
+                    "result_summary": result_summary_short,
                 })
 
                 # 发射生成日志：节点完成
@@ -1154,6 +1244,7 @@ Return as JSON with the same structure."""
                     "level": "success",
                     "message": f"Agent [{node_name}] 执行成功 ({elapsed:.1f}s)",
                     "agent": node_name,
+                    "agent_name": node_name,
                     "task_id": self._current_task.get("task_id", "") if self._current_task else "",
                     "detail": result_summary,
                     "elapsed": elapsed,
@@ -1169,13 +1260,14 @@ Return as JSON with the same structure."""
                 node.error = str(e)
                 self._tasks_failed += 1
                 self._emit_event("agent.failed", {
-                    "agent": node_name, "stage": "dag_node_execution", "error": str(e),
+                    "agent": node_name, "agent_name": node_name, "stage": "dag_node_execution", "error": str(e),
                 })
                 return {"node": node_name, "status": "failed", "error": str(e)}
 
         # Agent 创建失败
         self._emit_event("agent.failed", {
             "agent": node_name,
+            "agent_name": node_name,
             "stage": "dag_node_creation",
             "error": "Failed to create agent instance",
         })
@@ -1322,6 +1414,12 @@ Return as JSON with the same structure."""
                 enhanced_context.append(f"Style: {self._current_task.get('style', 'N/A')}")
                 enhanced_context.append(f"Target Audience: {self._current_task.get('target_audience', 'N/A')}")
                 enhanced_context.append(f"Language: {self._current_task.get('language', 'zh-CN')}")
+                protagonist = self._current_task.get('protagonist_name', '')
+                if protagonist:
+                    enhanced_context.append(f"Protagonist: {protagonist}")
+                chars_summary = self._current_task.get('characters_summary', '')
+                if chars_summary:
+                    enhanced_context.append(f"Characters: {chars_summary}")
 
         # 从 DAG 节点结果加载角色数据（MongoDB 不可用时回退）
         if agent_name not in ["character_generator", "config_enhancer"]:
@@ -1364,22 +1462,71 @@ Return as JSON with the same structure."""
             except Exception as e:
                 log_warn(f"Failed to load locations from DB: {e}")
 
-        # 读取已生成的大纲
+        # --- 章节生成节点的特殊上下文 ---
+        chapter_num = None
+        if agent_name.startswith("content_generator_chapter_"):
+            try:
+                chapter_num = int(agent_name.split("_")[-1])
+            except (ValueError, IndexError):
+                pass
+
+        # 读取已生成的大纲（对所有非 outline_planner 节点）
         if pm.mongodb_client and agent_name not in ["outline_planner"]:
             try:
                 collection = pm.mongodb_client.get_collection("chapter_outlines")
-                outlines = list(collection.find({"task_id": task_id} if task_id else {}))
-                if outlines:
-                    enhanced_context.append(f"\n\n## Generated Outlines ({len(outlines)}):")
-                    for outline in outlines[:3]:
-                        ch_num = outline.get('chapter_num', 'N/A')
-                        ch_title = outline.get('title', 'N/A')
-                        enhanced_context.append(f"- {ch_tag(ch_num)} {ch_title}")
+                if chapter_num:
+                    # 章节生成节点：加载特定章节的完整大纲
+                    outline_doc = collection.find_one({"task_id": task_id, "chapter_num": chapter_num})
+                    if outline_doc:
+                        ch_title = outline_doc.get('title', '')
+                        poi = outline_doc.get('points_of_interest', [])
+                        foreshadow = outline_doc.get('foreshadowing', [])
+                        enhanced_context.append(f"\n\n## Current Chapter Outline")
+                        enhanced_context.append(f"Chapter {chapter_num}: {ch_title}")
+                        if poi:
+                            enhanced_context.append(f"Points of Interest: {'; '.join(poi[:3])}")
+                        if foreshadow:
+                            enhanced_context.append(f"Foreshadowing: {'; '.join(foreshadow[:3])}")
+                        # 也包含完整的大纲文档 JSON 供 LLM 参考
+                        enhanced_context.append(f"\nFull Outline:")
+                        enhanced_context.append(str(outline_doc)[:1000])
+                else:
+                    outlines = list(collection.find({"task_id": task_id} if task_id else {}).limit(5))
+                    if outlines:
+                        enhanced_context.append(f"\n\n## Generated Outlines ({len(outlines)}):")
+                        for outline in outlines[:5]:
+                            ch_n = outline.get('chapter_num', 'N/A')
+                            ch_t = outline.get('title', 'N/A')
+                            enhanced_context.append(f"- {ch_tag(ch_n)} {ch_t}")
             except Exception as e:
                 log_warn(f"Failed to load outlines from DB: {e}")
 
-        # 读取已生成的章节（用于质量检查和文本润色）
+        # 读取上一章已生成的内容（用于章节生成节点的上下文衔接）
+        if chapter_num and chapter_num > 1 and pm.mongodb_client:
+            try:
+                collection = pm.mongodb_client.get_collection("chapters")
+                prev_chapter = collection.find_one(
+                    {"task_id": task_id, "chapter_num": chapter_num - 1},
+                    sort=[("chapter_num", -1)]
+                )
+                if prev_chapter:
+                    prev_title = prev_chapter.get('title', '')
+                    prev_content = prev_chapter.get('content', '')
+                    prev_wc = prev_chapter.get('word_count', 0)
+                    # 截取末尾内容用于衔接（最近 800 字）
+                    tail = prev_content[-800:] if len(prev_content) > 800 else prev_content
+                    enhanced_context.append(f"\n\n## Previous Chapter Context")
+                    enhanced_context.append(f"Chapter {chapter_num - 1}: {prev_title} ({prev_wc} 字)")
+                    enhanced_context.append(f"上一章末尾内容（用于衔接）:")
+                    enhanced_context.append(tail)
+            except Exception as e:
+                log_warn(f"Failed to load previous chapter from DB: {e}")
+
+        # 读取已生成的章节（用于质量检查、文本润色、章节生成节点感知已写章节）
         chapter_list = []
+        if pm.mongodb_client and agent_name in ("quality_checker", "humanizer", "content_generator"):
+            # content_generator 也需要感知已存在的章节（以便不重复生成）
+            pass
         if pm.mongodb_client and agent_name in ("quality_checker", "humanizer"):
             try:
                 collection = pm.mongodb_client.get_collection("chapters")

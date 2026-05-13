@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, Monitor, InfoFilled, Fold, Expand, OfficeBuilding, MagicStick } from '@element-plus/icons-vue'
+import { Plus, Monitor, InfoFilled, Fold, Expand, OfficeBuilding, DataLine, Setting, Document, MagicStick } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
+
+// 语言设置
+const currentLang = ref(localStorage.getItem('ai-novels-lang') || 'zh-CN')
+const setLanguage = (lang: string) => {
+  currentLang.value = lang
+  localStorage.setItem('ai-novels-lang', lang)
+}
+const langLabel = computed(() => currentLang.value === 'zh-CN' ? '中' : 'EN')
 
 // 侧边栏菜单
 interface MenuItem {
@@ -16,7 +24,10 @@ interface MenuItem {
 const menuItems = ref<MenuItem[]>([
   { title: '创建任务', icon: 'Plus', path: '/tasks/create' },
   { title: '任务监控', icon: 'Monitor', path: '/tasks/monitor' },
+  { title: '调度监控', icon: 'DataLine', path: '/tasks/dashboard' },
   { title: '系统监控', icon: 'OfficeBuilding', path: '/tasks/system-health' },
+  { title: '配置管理', icon: 'Setting', path: '/tasks/config' },
+  { title: '日志查看', icon: 'Document', path: '/tasks/logs' },
   { title: '关于', icon: 'InfoFilled', path: '/about' },
 ])
 
@@ -111,6 +122,17 @@ const handleMenuSelect = (index: string) => {
           </h1>
         </div>
         <div class="header-right">
+          <el-dropdown trigger="click" @command="setLanguage">
+            <div class="lang-switch glass-card">
+              <span class="lang-label">{{ langLabel }}</span>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="zh-CN" :class="{ active: currentLang === 'zh-CN' }">简体中文</el-dropdown-item>
+                <el-dropdown-item command="en-US" :class="{ active: currentLang === 'en-US' }">English</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <div class="user-info glass-card">
             <div class="user-avatar">
               <el-icon :size="16"><MagicStick /></el-icon>
@@ -389,6 +411,31 @@ const handleMenuSelect = (index: string) => {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+/* 语言切换 */
+.lang-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.lang-switch:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.lang-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #38bdf8;
 }
 
 /* 用户信息 */

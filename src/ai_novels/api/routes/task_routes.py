@@ -69,6 +69,7 @@ class TaskDetailResponse(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     stage_statuses: Optional[Dict[str, Any]] = None
+    enhanced_config: Optional[Dict[str, Any]] = None
 
 
 class TaskCreateRequest(BaseModel):
@@ -275,6 +276,7 @@ async def get_task_detail(
             for idx, log_entry in enumerate(db_task.logs or []):
                 stage = log_entry.get("stage", f"step_{idx}")
                 stage_statuses[stage] = {"status": log_entry.get("status", "unknown")}
+            enhanced_config = (db_task.result or {}).get("enhanced_config", {}) if db_task.result else {}
             return TaskDetailResponse(
                 task_id=task_id,
                 agent_name="coordinator",
@@ -292,6 +294,7 @@ async def get_task_detail(
                     "current_stage": db_task.current_stage,
                     "stage_statuses": stage_statuses,
                 },
+                enhanced_config=enhanced_config,
                 error=db_task.error,
                 created_at=str(db_task.created_at) if db_task.created_at else None,
                 started_at=str(db_task.started_at) if db_task.started_at else None,

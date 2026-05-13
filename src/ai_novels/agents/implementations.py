@@ -45,19 +45,25 @@ class ConfigEnhancerAgent(BaseAgent):
     def process(self, message: Message) -> Message:
         content = str(message.content)
 
-        prompt = f"""Analyze the following novel generation request and extract/enhance configuration:
+        prompt = f"""You are a novel configuration enhancer. Analyze the following request and extract ALL details:
 
 Request: {content[:CONTENT_TRUNCATE_LENGTH]}
 
-Extract:
-1. Genre/category (in Chinese, e.g. 武侠, 奇幻, 科幻)
-2. Target audience (e.g. 青年读者, 成年读者)
-3. Style/tone (e.g. 热血, 沉重, 轻松)
-4. Description — a 1-2 sentence summary of the novel concept
-5. Structure preferences
-6. Key themes
+You MUST extract and return a comprehensive JSON config. Include ALL of the following:
 
-Return as JSON with keys: genre, target_audience, style, description, tone, structure, themes."""
+1. **protagonist_name** — main character's name (if mentioned, in Chinese)
+2. **genre** — novel genre/category (in Chinese, e.g. 武侠/奇幻/科幻/都市/仙侠/言情/悬疑)
+3. **style** — writing style (e.g. 热血/沉重/轻松/幽默/写实/唯美)
+4. **description** — 2-3 sentence novel concept/summary in Chinese
+5. **target_audience** — target readers (e.g. 青年读者/成年读者/全年龄)
+6. **language** — language code (zh-CN/en)
+7. **tone** — overall tone (e.g. epic/light/dark/serious/humorous)
+8. **themes** — key themes array
+9. **characters** — array of character objects with name and role (主角/配角/反派)
+10. **world_setting** — brief world setting description if applicable
+
+Return ONLY valid JSON. No other text. Example:
+{{"protagonist_name": "林清风", "genre": "仙侠", "style": "热血", "description": "少年林清风踏上修仙之路的故事", "target_audience": "青年读者", "language": "zh-CN", "tone": "epic", "themes": ["成长", "友情", "冒险"], "characters": [{{"name": "林清风", "role": "主角"}}], "world_setting": "修仙世界"}}"""
 
         result = self._generate_with_llm(prompt)
         if result:

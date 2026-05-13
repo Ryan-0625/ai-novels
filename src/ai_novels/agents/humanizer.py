@@ -52,11 +52,12 @@ class HumanizerAgent(BaseAgent):
             config = AgentConfig(
                 name="humanizer",
                 description="Text polishing - remove AI痕迹, increase humanity",
-                provider="ollama",
-                model="qwen2.5-7b",
+                model="deepseek-v4-flash",
                 max_tokens=8192
             )
         super().__init__(config)
+        # 使用全局默认 LLM 提供商而非硬编码 ollama
+        self._llm_provider = None  # 由 router 自动选择默认提供商
 
         self._results: Dict[str, List[PolishResult]] = {}
         # 缓存 Task Context（genre/style），由 process 解析

@@ -291,12 +291,21 @@ class ContentGeneratorAgent(BaseAgent):
                              "background": c.get("background", "")[:200]}
                             for c in char_docs
                         ]
-                    # 加载大纲（作为outline的补充）
+                    # 加载本章节的大纲（按 chapter_num 精确匹配）
                     outlines_coll = pm.mongodb_client.get_collection("chapter_outlines")
-                    outline_docs = list(outlines_coll.find({"task_id": task_id}).limit(10))
-                    if outline_docs and not context.outline:
-                        out = outline_docs[0]
-                        context.outline = out.get("title", "") or ""
+                    outline_doc = outlines_coll.find_one({"task_id": task_id, "chapter_num": chapter_num})
+                    if outline_doc:
+                        ch_title = outline_doc.get("title", "")
+                        poi = outline_doc.get("points_of_interest", [])
+                        outline_text = f"Chapter {chapter_num}: {ch_title}"
+                        if poi:
+                            outline_text += f"\nKey Points: {'; '.join(poi[:5])}"
+                        context.outline = outline_text
+                    elif not context.outline:
+                        # fallback: 任意大纲
+                        outline_docs = list(outlines_coll.find({"task_id": task_id}).limit(1))
+                        if outline_docs:
+                            context.outline = outline_docs[0].get("title", "") or ""
                     # 加载世界观地点
                     world_coll = pm.mongodb_client.get_collection("world_locations")
                     world_docs = list(world_coll.find({"task_id": task_id}).limit(5))
@@ -307,6 +316,35 @@ class ContentGeneratorAgent(BaseAgent):
                         }
             except Exception:
                 pass  # DB查询为尽力而为，失败时使用消息中的参数
+
+            # 如果 MongoDB 未加载到角色，尝试从消息文本解析主角名
+            if not context.characters and content:
+                try:
+                    # 从 "Protagonist: xxx" 或 "Characters: xxx" 提取
+                    for line in content.split('\n'):
+                        line_lower = line.strip().lower()
+                        if 'protagonist:' in line_lower or '主角:' in line_lower:
+                            name = line.split(':', 1)[1].strip().strip(',.\n')
+                            if name:
+                                context.characters.append({"name": name, "role": "主角", "personality": "", "background": ""})
+                                break
+                    # 尝试解析 characters_summary
+                    for line in content.split('\n'):
+                        if line.strip().lower().startswith('characters:'):
+                            rest = line.split(':', 1)[1].strip()
+                            for part in rest.split(','):
+                                part = part.strip()
+                                if '(' in part:
+                                    name = part.split('(')[0].strip()
+                                    role = part.split('(')[1].rstrip(')').strip()
+                                    if name:
+                                        context.characters.append({"name": name, "role": role, "personality": "", "background": ""})
+                                elif part:
+                                    context.characters.append({"name": part, "role": "角色", "personality": "", "background": ""})
+                            if context.characters:
+                                break
+                except Exception:
+                    pass
 
         # 生成内容
         result = self._generate_content(
@@ -323,8 +361,14 @@ class ContentGeneratorAgent(BaseAgent):
         # === 持久化章节（MongoDB 不可用时自动回退到文件）===
         pm = get_persistence_manager()
         chapter_num = int(chapter_id.split('_')[-1]) if chapter_id.split('_')[-1].isdigit() else 1
+        # 从 outline 中提取纯标题（去掉 "Chapter X:" 前缀和 "Key Points:" 等后缀）
+        raw_title = context.outline or ""
+        clean_title = raw_title.split("\n")[0] if raw_title else ""
+        clean_title = re.sub(r'^Chapter\s+\d+[:\s]*', '', clean_title).strip()
+        if not clean_title:
+            clean_title = f"第{chapter_num}章"
         ChapterPersistence.save_chapter(
-            pm, task_id, chapter_num, context.outline or f"Chapter {chapter_num}",
+            pm, task_id, chapter_num, clean_title,
             result.text, result.statistics.get("word_count", 0),
             {"generated_at": datetime.now().isoformat()}
         )
@@ -800,57 +844,87 @@ class ContentGeneratorAgent(BaseAgent):
             except ValueError:
                 pass
 
+        # 根据章节位置动态选择开场风格
+        if ch_num == 1:
+            opening_style = "以场景描写或环境氛围开篇，自然引出故事世界和主要人物。"
+            continuation_note = "这是故事的第一章，任务是建立世界观、引入主角、铺垫核心冲突。"
+        elif ch_num <= 3:
+            opening_style = "从上一章结尾处自然衔接，使用时间过渡或场景转换开篇。"
+            continuation_note = "故事初期的展开章节，进一步深化人物关系和世界观。"
+        elif ch_num <= 7:
+            opening_style = "以人物行动或对话直接切入，保持阅读节奏感。"
+            continuation_note = "故事发展阶段的章节，冲突逐步升级，情节更加紧凑。"
+        elif ch_num <= 15:
+            opening_style = "从关键场景或人物互动开篇，直接推进主线情节。"
+            continuation_note = "故事中段的章节，矛盾深化，新线索不断浮现。"
+        else:
+            opening_style = "以紧迫感或悬念开篇，为故事高潮做准备。"
+            continuation_note = "故事后期的章节，各方冲突即将爆发，节奏加快。"
+
         prompt = """你是一位专业的中文小说作家，必须严格遵守以下规则。
 
-【强制要求一】语言
-必须100%使用简体中文。禁止出现任何英文单词（包括人名地名全部音译成中文）。
-禁止使用"protagonist、antagonist、hero、villain、side_character"等英文占位词！
-请使用具体的人名（例如：林清风、苏暮雪）和地名（例如：星月城、青云山）。
+输出要求：
+- 第一句话就进入故事，直接写正文
+- 不要写"第X章"、不要写"##"标记、不要写任何形式的章节标题
+- 不要出现"开场要求"、"角色信息"等元文字——只输出小说正文本身
+- 禁止在正文中包含任何markdown标记、说明性文字或格式符号
+- 不要输出任何不在上述小说内容范围内的东西
 
-【强制要求二】输出格式
-禁止输出章节标题！不要写"第一章"、"Chapter 1"等标题。
-直接以小说正文开头，第一句话就是故事内容。
+写作规则：
+1. 100%使用简体中文，包括中文标点（，。！？；：）
+2. 禁止出现任何英文单词——人名地名全部使用中文
+3. 使用具体的人名（根据角色信息）和具体的地名进行创作
+4. 禁止重复任何句子——每一句话都必须推进情节、刻画人物或描写环境
+5. 符合中文表达习惯，用语自然流畅
+6. 【字数要求】你必须写出至少 {target_words} 字的内容！少于 {target_words} 字算不合格，需要重写。这是硬性要求！
 
-【强制要求三】禁止重复
-禁止重复任何句子。每一句话都必须推进情节、刻画人物或描写环境。
-如果已写过某个场景，请立即转到新场景。
+【开场要求】
+{opening_style}
 
-## 小说信息
+【小说信息】
 体裁: {genre}
-风格: {style}
 目标字数: ~{target_words} 字
 
-## 章节信息
+【章节信息】
 当前是第 {chapter_num} 章。
-这是连续章节之一，每一章都必须推进故事情节发展。
+{continuation_note}
 前章内容已经发生，本章必须承接上文并展开全新的情节。
-请勿重复前章内容！
+请勿重复或重述前章已有的事件！
 
-## 上下文信息
+【角色信息】
+{character_info}
+
+【上下文信息】
 {context_info}
 
-## 任务要求
-请撰写引人入胜的故事内容，必须：
-1. 全文只允许使用简体中文
-2. 使用中文标点（，。！？；：）
-3. 禁止出现任何英文单词，包括protagonist/antagonist等占位词
-4. 使用具体的中文人名和地名进行创作
-5. 符合中文表达习惯，用语自然流畅
-6. 匹配指定的风格和体裁
-7. 请写出至少 {target_words} 字的内容——如果灵感好可以写更多
-
-## 输出
-直接输出小说正文（不加标题，第一句即正文）：
-
+开始写正文（只输出小说内容，不要任何额外文字）：
 
 """
+        # 构建角色信息字符串
+        char_lines = []
+        if context.characters:
+            for c in context.characters:
+                name = c.get('name', '?')
+                role = c.get('role', c.get('char_type', ''))
+                personality = c.get('personality', '')
+                bg = c.get('background', '')[:100]
+                char_lines.append(f"- {name}（{role}）")
+                if personality:
+                    char_lines.append(f"  性格: {personality}")
+                if bg:
+                    char_lines.append(f"  背景: {bg}")
+        if not char_lines:
+            char_lines = ["（使用已有章节中建立的角色，保持角色一致性）"]
+        character_info = "\n".join(char_lines)
+
         return prompt.format(
             genre=context.genre or "奇幻",
-            style=str(style.__dict__),
             target_words=target_words,
             context_info=context_info,
-            prompt_type=prompt_type,
             chapter_num=ch_num,
+            opening_style=opening_style,
+            continuation_note=continuation_note,
+            character_info=character_info,
         )
 
     def _build_english_prompt(
@@ -924,25 +998,25 @@ The content you output will be presented directly to readers, please ensure 100%
         """构建上下文信息字符串"""
         info_parts = []
 
-        # 章节概要
-        info_parts.append(f"### 章节概要")
-        info_parts.append(context.outline)
-        info_parts.append("")
+        # 章节概要 — 从 outline 中提取
+        if context.outline:
+            info_parts.append(f"### 本章概要")
+            info_parts.append(context.outline)
+            info_parts.append("")
 
         # 节拍信息
         if context.beats:
-            info_parts.append("### 节拍分解")
+            info_parts.append("### 节奏安排")
             for beat in context.beats:
-                info_parts.append(f"- {beat.get('description', 'N/A')}")
+                desc = beat.get('description', 'N/A')
+                info_parts.append(f"- {desc}")
             info_parts.append("")
 
-        # 角色信息
-        if context.characters:
-            info_parts.append("### 角色")
-            for char in context.characters:
-                char_name = char.get('name', 'N/A')
-                role = char.get('role', 'N/A')
-                info_parts.append(f"- {char_name} ({role})")
+        # 本章关键事件
+        if context.key_events:
+            info_parts.append("### 关键事件")
+            for evt in context.key_events[:5]:
+                info_parts.append(f"- {evt}")
             info_parts.append("")
 
         # 环境设置
@@ -960,11 +1034,9 @@ The content you output will be presented directly to readers, please ensure 100%
         return "\n".join(info_parts)
 
     def _clean_generated_content(self, content: str) -> str:
-        """清理生成的内容：移除英文标题行、尾部标记、前缀标记和连续重复行"""
+        """清理生成的内容：移除尾部标记、英文、占位名和连续重复行"""
         import re
 
-        # 移除 "Chapter X: ..." 等英文标题行
-        content = re.sub(r'^Chapter\s+\d+[:\s]\s*.*?(?:\n|$)', '', content, flags=re.IGNORECASE | re.MULTILINE)
         # 移除 "To be continued..." 等尾部英文
         content = re.sub(r'\n?\s*To\s+be\s+continued\.*?\s*$', '', content, flags=re.IGNORECASE)
         # 移除可能的前缀标记
@@ -974,8 +1046,20 @@ The content you output will be presented directly to readers, please ensure 100%
             if content_lower.startswith(prefix):
                 content = content[len(prefix):].strip()
                 break
-        # 移除编号列表前缀
-        content = re.sub(r'^\d+[\.\)]\s*', '', content.strip())
+        # 移除可能泄露的【...】元信息行
+        content = re.sub(r'^【[^】]+】\s*\n?', '', content, flags=re.MULTILINE)
+        # 移除占位角色名：侧角色1、角色1、配角1、Character1 等
+        content = re.sub(r'[侧配主]角色?\d*', '', content)
+        content = re.sub(r'Character\s*\d+', '', content, flags=re.IGNORECASE)
+        # 移除行内残留的英文关键词（前置标注类词语，不影响正文）
+        for eng_word in ["Chapter", "Key Points", "Key event", "Narrative", "Description", "Action", "Dialogue", "Internal", "Summary", "Main Plot", "Sub Plot"]:
+            content = re.sub(rf'\s*{eng_word}[s:\s]*', '', content, flags=re.IGNORECASE)
+        # 移除整行都是英文的行
+        content = re.sub(r'^[a-zA-Z\s,.;:!?\'"-]+$', '', content, flags=re.MULTILINE)
+        # 移除头部空行
+        content = re.sub(r'^\s*\n', '', content)
+        # 压缩多个连续空行为最多一个
+        content = re.sub(r'\n{3,}', '\n\n', content)
         # 移除连续的重复行（保留空行）
         lines = content.split('\n')
         seen = []
@@ -1047,8 +1131,11 @@ The content you output will be presented directly to readers, please ensure 100%
 
         full = "\n\n".join(parts)
 
-        # 去除 "Chapter X: ..." 标题行
-        full = re.sub(r'^Chapter\s+\d+[:\s].*(?:\n|$)', '', full, flags=re.I | re.MULTILINE).strip()
+        # 安全清理：移除可能泄露的 ## 标题和 【】元信息行
+        full = re.sub(r'^#{1,3}\s+.*$', '', full, flags=re.MULTILINE)
+        full = re.sub(r'^【[^】]+】\s*$', '', full, flags=re.MULTILINE)
+        full = re.sub(r'\n{3,}', '\n\n', full)
+        full = full.strip()
 
         # 跨段落去重：仅去除完全相同的连续重复段落
         final_para = full.split('\n\n')

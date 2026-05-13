@@ -2,6 +2,9 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import apiV2, { type NovelPreset, type ConfigReloadResponse } from '@/services/api-v2'
+import { getCached, setCache } from '@/utils/cache'
+
+const CACHE_KEY_PRESETS = 'novel_presets'
 
 export const useConfigStore = defineStore('config', () => {
   const fullConfig = ref<Record<string, any> | null>(null)
@@ -23,10 +26,17 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function fetchPresets() {
+    // 优先从缓存读取
+    const cached = getCached<NovelPreset[]>(CACHE_KEY_PRESETS)
+    if (cached) {
+      presets.value = cached
+      return
+    }
     loading.value = true
     error.value = null
     try {
       presets.value = await apiV2.listNovelPresets()
+      setCache(CACHE_KEY_PRESETS, presets.value, 5 * 60 * 1000) // 5分钟TTL
     } catch (e: any) {
       error.value = e.message || 'Failed to fetch presets'
     } finally {

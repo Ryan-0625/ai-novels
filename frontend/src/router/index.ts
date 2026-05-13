@@ -68,6 +68,27 @@ const routes: Array<RouteRecordRaw> = [
         } satisfies RouteMeta,
       },
       {
+        path: 'logs',
+        name: 'LogViewer',
+        component: () => import('@/views/LogViewerView.vue'),
+        meta: {
+          title: '日志查看',
+          icon: 'Document',
+          order: 5,
+        } satisfies RouteMeta,
+      },
+      {
+        path: 'generation/:taskId',
+        name: 'NovelGeneration',
+        component: () => import('@/views/NovelGenerationView.vue'),
+        props: true,
+        meta: {
+          title: '小说生成',
+          icon: 'VideoPlay',
+          order: 3,
+        } satisfies RouteMeta,
+      },
+      {
         path: 'preview/:taskId',
         name: 'NovelPreview',
         component: () => import('@/views/NovelPreviewView.vue'),

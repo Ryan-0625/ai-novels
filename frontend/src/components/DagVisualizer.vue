@@ -160,7 +160,7 @@ watch(() => [props.nodes, props.edges, props.width, props.height], render, { dee
 
 <style scoped>
 .dag-visualizer {
-  background: #0f172a;
+  background: transparent;
   border-radius: 8px;
   overflow: hidden;
 }

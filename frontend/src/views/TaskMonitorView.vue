@@ -12,14 +12,7 @@ import { Refresh, Loading, SuccessFilled, Warning, CircleCheck, View, Close } fr
 interface Task {
   task_id: string
   agent_name?: string
-  user_id?: string
-  task_type?: string
-  genre?: string
-  title?: string
-  description?: string
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  progress: number
-  current_stage?: string
   created_at?: string
   started_at?: string
   completed_at?: string
@@ -38,6 +31,7 @@ const tasks = ref<Task[]>([])
 const loading = ref(false)
 const refreshInterval = ref<number>()
 const selectedTask = ref<Task | null>(null)
+const recentOutput = ref('')
 
 // SSE 状态
 const sseConnected = ref(false)
@@ -56,6 +50,15 @@ const statusColors: Record<string, string> = {
   completed: '#10b981',
   failed: '#ef4444',
   cancelled: '#64748b',
+}
+
+// 优先级文本映射
+const priorityLabel: Record<string, string> = {
+  '0': 'CRITICAL',
+  '1': 'HIGH',
+  '2': 'NORMAL',
+  '3': 'LOW',
+  '4': 'BACKGROUND',
 }
 
 // 状态文本映射
@@ -84,8 +87,19 @@ const fetchTasks = async () => {
     tasks.value = (response.tasks || []).map((t: any) => ({
       ...t,
       status: t.status || 'pending',
-      progress: t.progress || 0,
     }))
+    // 如果有 running 任务但 currentActivity 为空，初始化一个
+    if (!currentActivity.value) {
+      const running = tasks.value.find(t => t.status === 'running')
+      if (running) {
+        currentActivity.value = {
+          agentName: running.agent_name || 'coordinator',
+          stage: '执行中',
+          progress: 0.5,
+          timestamp: Date.now(),
+        }
+      }
+    }
   } catch (error) {
     logError('获取任务列表失败:', error)
   } finally {
@@ -153,6 +167,9 @@ function handleSSEEvent(event: SSEEvent) {
     case 'task.created':
       fetchTasks()
       break
+    case 'chapter.content':
+      recentOutput.value = payload.content || payload.content_preview || ''
+      break
     case 'agent.started':
     case 'task.started':
       currentActivity.value = {
@@ -171,16 +188,21 @@ function handleSSEEvent(event: SSEEvent) {
       break
     case 'llm.request':
       llmCall.value = {
-        provider: payload.provider || 'ollama',
-        model: payload.model || 'qwen2.5-7b',
+        provider: payload.provider || 'deepseek',
+        model: payload.model || 'deepseek-v4-flash',
         status: 'requesting',
       }
       break
     case 'llm.response':
       llmCall.value = {
-        provider: payload.provider || 'ollama',
-        model: payload.model || 'qwen2.5-7b',
+        provider: payload.provider || 'deepseek',
+        model: payload.model || 'deepseek-v4-flash',
         status: 'done',
+      }
+      break
+    case 'llm.error':
+      if (llmCall.value) {
+        llmCall.value.status = 'error'
       }
       break
     case 'llm.stream.chunk':
@@ -196,7 +218,7 @@ function handleSSEEvent(event: SSEEvent) {
         progress: 1,
         timestamp: Date.now(),
       }
-      // 更新对应活动为 completed
+      // 更新对应活动为 completed，附带输出摘要
       {
         const idx = activities.value.findIndex(
           a => a.agentName === agentName && a.status === 'running'
@@ -204,6 +226,10 @@ function handleSSEEvent(event: SSEEvent) {
         if (idx >= 0) {
           activities.value[idx].status = 'completed'
           activities.value[idx].duration = Date.now() - activities.value[idx].timestamp
+          activities.value[idx].details = {
+            ...activities.value[idx].details,
+            output: payload.result_summary || payload.detail || payload.elapsed_time ? `耗时: ${payload.elapsed_time?.toFixed(1)}s` : undefined,
+          }
         }
       }
       setTimeout(() => {
@@ -229,6 +255,33 @@ function handleSSEEvent(event: SSEEvent) {
       llmCall.value = null
       fetchTasks()
       break
+    case 'agent.skipped':
+      activities.value.push({
+        id: `${agentName}-skipped-${Date.now()}`,
+        agentName,
+        stage: payload.stage || '已跳过',
+        status: 'failed',
+        timestamp: Date.now(),
+        details: { error: payload.error || '非关键节点，已自动跳过' },
+      })
+      break
+    case 'generation.log': {
+      const logLevel = payload.level || 'info'
+      const logMsg = payload.message || ''
+      // 所有 agent 日志都显示在活动流中
+      const exists = activities.value.some(a => a.id === `log-${agentName}-${logLevel}-${payload.elapsed?.toFixed(0)}`)
+      if (!exists) {
+        activities.value.push({
+          id: `log-${agentName}-${Date.now()}`,
+          agentName,
+          stage: logLevel === 'success' ? '✓ 完成' : logLevel === 'error' ? '✗ 失败' : logLevel === 'warning' ? '⚠ 警告' : '→ 日志',
+          status: logLevel === 'error' ? 'failed' : logLevel === 'success' ? 'completed' : 'running',
+          timestamp: Date.now(),
+          details: { output: logMsg },
+        })
+      }
+      break
+    }
   }
 }
 
@@ -338,7 +391,7 @@ const statCards = computed(() => [
           :is-connected="sseConnected"
           :current-activity="currentActivity"
           :llm-call="llmCall"
-          recent-output=""
+          :recent-output="recentOutput"
         />
       </div>
       <div class="monitor-col">
@@ -384,17 +437,18 @@ const statCards = computed(() => [
             </template>
           </el-table-column>
           
-          <el-table-column prop="title" label="标题" min-width="200">
+          <el-table-column prop="title" label="任务" min-width="200">
             <template #default="{ row }">
               <div class="task-title">
-                <span class="title-text">{{ row.title || '未命名任务' }}</span>
+                <span class="title-text">{{ row.agent_name || row.task_id.slice(-8) }}</span>
+                <span class="task-id-sub">{{ row.task_id.slice(-8) }}</span>
               </div>
             </template>
           </el-table-column>
-          
-          <el-table-column prop="genre" label="类型" width="100">
+
+          <el-table-column prop="agent_name" label="Agent" width="120">
             <template #default="{ row }">
-              <span class="genre-tag">{{ row.genre }}</span>
+              <span class="agent-tag">{{ row.agent_name || '-' }}</span>
             </template>
           </el-table-column>
           
@@ -407,20 +461,11 @@ const statCards = computed(() => [
             </template>
           </el-table-column>
           
-          <el-table-column prop="progress" label="进度" width="180">
+          <el-table-column prop="priority" label="优先级" width="100">
             <template #default="{ row }">
-              <div class="progress-wrapper">
-                <div class="progress-bar">
-                  <div 
-                    class="progress-fill" 
-                    :style="{ 
-                      width: `${row.progress}%`,
-                      background: statusColors[row.status]
-                    }"
-                  ></div>
-                </div>
-                <span class="progress-text">{{ row.progress }}%</span>
-              </div>
+              <el-tag :type="row.priority === '0' ? 'danger' : row.priority === '1' ? 'warning' : 'info'" size="small" effect="dark">
+                {{ priorityLabel[row.priority] || row.priority }}
+              </el-tag>
             </template>
           </el-table-column>
           

@@ -46,6 +46,7 @@ class EventType(Enum):
     AGENT_STARTED = "agent.started"
     AGENT_COMPLETED = "agent.completed"
     AGENT_FAILED = "agent.failed"
+    AGENT_SKIPPED = "agent.skipped"
     AGENT_MESSAGE = "agent.message"
     
     # 任务相关

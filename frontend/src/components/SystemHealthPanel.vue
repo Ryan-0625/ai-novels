@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import api from '@/services/api'
+import apiV2 from '@/services/api-v2'
 import {
   Loading,
   Warning,
@@ -154,7 +154,7 @@ const getLatencyClass = (latency: number) => {
 const fetchHealth = async (deepCheck: boolean = false) => {
   loading.value = true
   try {
-    const response = await api.getSystemHealth(deepCheck)
+    const response = await apiV2.getSystemHealth(deepCheck)
     healthData.value = response
   } catch (error) {
     console.error('获取健康状态失败:', error)
@@ -167,7 +167,7 @@ const fetchHealth = async (deepCheck: boolean = false) => {
 const checkComponent = async (componentName: string) => {
   checking.value = true
   try {
-    await api.getComponentHealth(componentName)
+    await apiV2.getComponentHealth(componentName)
     await fetchHealth()
   } catch (error) {
     console.error(`检查组件 ${componentName} 失败:`, error)
@@ -180,7 +180,7 @@ const checkComponent = async (componentName: string) => {
 const immediateCheck = async () => {
   checking.value = true
   try {
-    await api.immediateHealthCheck()
+    await apiV2.immediateHealthCheck()
     await fetchHealth(true)
   } catch (error) {
     console.error('立即健康检查失败:', error)

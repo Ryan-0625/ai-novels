@@ -9,6 +9,7 @@ OutlinePlannerAgent - 大纲规划智能体
 """
 
 import json
+import re
 import uuid
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
@@ -454,50 +455,41 @@ class OutlinePlannerAgent(BaseAgent):
         }
 
     def _generate_chapter_titles(self, count: int, genre: str, language: str = "zh-CN") -> Dict[int, str]:
-        """生成章节标题"""
+        """生成多样化的章节标题 — 完全由 LLM 根据小说节奏生成，无模板兜底"""
         titles = {}
-        import random
-        random.seed(42)
+        novel_title = self._current_outline.title if self._current_outline else ""
+        theme = self._current_outline.theme if self._current_outline else ""
 
-        if language and language.startswith("zh"):
-            # 中文标题
-            cn_templates = [
-                "风云起", "暗流涌", "新篇章", "遇故人",
-                "迷雾中", "转折点", "危机现", "寻真相",
-                "决战前", "终章"
-            ]
-            for i in range(1, count + 1):
-                tpl = cn_templates[(i - 1) % len(cn_templates)]
-                titles[i] = tpl
-            return titles
+        prompt = f"""你是一位小说作家，正在为一部{genre}小说创作{count}个章节的标题。
 
-        # 英文标题
-        if genre == "fantasy":
-            title_templates = [
-                "A New Beginning", "The Journey Begins", "The Discovery",
-                "Meeting the Unknown", "The Challenge", "A Fork in the Road",
-                "The Revelation", "Memories", "The Warning",
-                "The Final Battle"
-            ]
-        elif genre == "romance":
-            title_templates = [
-                "A New Encounter", "First Impressions", "Growing Closer",
-                "The Confession", "Heartbreak", "A Glimmer of Hope",
-                "The Reunion", "Love Tested", "The Final Choice",
-                "Happy Ending"
-            ]
-        else:
-            title_templates = [
-                "A New Beginning", "The Unexpected", "A Turning Point",
-                "The Discovery", "The Confrontation", "The Aftermath",
-                "A New Development", "The Revelation", "Approaching the End",
-                "The Final Chapter"
-            ]
+小说名称: {novel_title or '未命名'}
+主题: {theme or '自行构思'}
+语言: {'简体中文' if language.startswith('zh') else 'English'}
+章节数: {count}
 
+创作要求：
+1. 每个标题必须贴合小说主题、世界观和故事走向
+2. 标题要有文学性和感染力，避免任何套话和模板
+3. 请按照故事节奏排列：开头铺垫 → 中段冲突升级 → 后期高潮收束
+4. 不要序号，不要额外说明，{count}个标题每行一个
+
+现在，请创作这{count}个章节标题："""
+
+        result = self._generate_with_llm(prompt)
+        if result:
+            lines = [l.strip() for l in result.strip().split('\n') if l.strip()]
+            valid = []
+            for l in lines:
+                l = re.sub(r'^\d+[.、\s)]*\s*', '', l).strip('。，.')
+                if l and len(l) >= 2 and not l.startswith(('```', '#', '标题', '以下', '注意', '要求')):
+                    valid.append(l)
+            for i, title in enumerate(valid[:count], 1):
+                titles[i] = title
+
+        # 纯兜底：LLM 失败时用简单章节标记，不用模板
         for i in range(1, count + 1):
-            template = title_templates[(i - 1) % len(title_templates)]
-            titles[i] = template
-
+            if i not in titles:
+                titles[i] = f"第{i}章"
         return titles
 
     def _format_outline_result(self) -> str:
