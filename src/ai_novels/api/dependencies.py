@@ -69,3 +69,13 @@ class RepositoryProvider:
     @staticmethod
     def get_task_repo() -> TaskRepository:
         return TaskRepository()
+
+
+# ────────────────────────────────────────────────────────────────────
+# [增量] WorkflowContext 依赖注入 (重新导出)
+# ────────────────────────────────────────────────────────────────────
+
+from ai_novels.api.auth.dependencies import (  # noqa: E402, F401
+    get_workflow_context,
+    get_optional_context,
+)

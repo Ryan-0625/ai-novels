@@ -14,9 +14,10 @@ clearStaleCaches()
 
 // 创建Vue应用实例
 const app = createApp(App)
+const pinia = createPinia()
 
 // 使用插件
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
 app.use(ElementPlus)
 
@@ -24,6 +25,13 @@ app.use(ElementPlus)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
+
+// [Phase 1] 初始化认证状态 (挂载后执行, 不阻塞渲染)
+import { useAuthStore } from '@/stores/authStore'
+router.isReady().then(() => {
+  const authStore = useAuthStore()
+  authStore.initialize()
+})
 
 // 挂载应用
 app.mount('#app')

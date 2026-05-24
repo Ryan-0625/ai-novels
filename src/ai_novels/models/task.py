@@ -42,6 +42,13 @@ class Task(SQLModel, table=True):
 
     # 用户/任务属性
     user_id: str = Field(default="default", index=True)
+
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
+
     genre: str = Field(default="")
     title: str = Field(default="")
     description: str = Field(default="", sa_column=Column(Text))

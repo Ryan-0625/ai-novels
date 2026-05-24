@@ -133,18 +133,56 @@ async def list_novel_genres():
 @router.get("/novel/styles", summary="获取可用写作风格")
 async def list_novel_styles():
     """返回所有可用的写作风格列表"""
-    style_descs = {
-        StyleType.DESCRIPTIVE: "注重描写的叙事风格",
-        StyleType.CONCISE: "简洁明快的叙事风格",
-        StyleType.POETIC: "富有诗意的叙事风格",
-        StyleType.DIALOGUE_HEAVY: "对话为主的叙事风格",
-        StyleType.STREAM_OF_CONSCIOUSNESS: "意识流叙事风格",
-        StyleType.REPORTER: "记者视角的叙事风格",
+    # 风格标签 — 统一中文二字名称
+    style_labels = {
+        "light": "轻松",
+        "serious": "严肃",
+        "humor": "幽默",
+        "passion": "热血",
+        "suspense": "悬疑",
+        "descriptive": "细腻",
+        "concise": "简洁",
+        "poetic": "诗意",
+        "dialogue_heavy": "对话",
+        "stream_of_consciousness": "意识流",
+        "reporter": "纪实",
     }
-    return [
-        {"value": st.value, "label": st.value.replace("_", " ").title(), "desc": style_descs.get(st, "")}
-        for st in StyleType
-    ]
+    style_descs = {
+        "light": "轻松愉快的叙事风格",
+        "serious": "庄重严谨的叙事风格",
+        "humor": "诙谐幽默的叙事风格",
+        "passion": "激情澎湃的叙事风格",
+        "suspense": "紧张刺激的叙事风格",
+        "descriptive": "注重描写的叙事风格",
+        "concise": "简洁明快的叙事风格",
+        "poetic": "富有诗意的叙事风格",
+        "dialogue_heavy": "以对话为主的叙事风格",
+        "stream_of_consciousness": "意识流叙事风格",
+        "reporter": "记者视角的叙事风格",
+    }
+    # 合并前端常用风格与后端 StyleType
+    seen = set()
+    result = []
+    for st in StyleType:
+        val = st.value
+        if val in seen:
+            continue
+        seen.add(val)
+        result.append({
+            "value": val,
+            "label": style_labels.get(val, val),
+            "desc": style_descs.get(val, ""),
+        })
+    # 补充前端独有的风格（不在 StyleType 中）
+    for val in ["light", "serious", "humor", "passion", "suspense"]:
+        if val not in seen:
+            seen.add(val)
+            result.append({
+                "value": val,
+                "label": style_labels.get(val, val),
+                "desc": style_descs.get(val, ""),
+            })
+    return result
 
 
 @router.get("/{key_path:path}", summary="获取指定配置项")

@@ -16,8 +16,9 @@ from pydantic import BaseModel, Field
 
 from ai_novels.agents.task_orchestrator import TaskPriority
 from ai_novels.api.controllers import status_controller, task_controller
-from ai_novels.api.dependencies import get_config_hub_dep
+from ai_novels.api.dependencies import get_config_hub_dep, get_optional_context
 from ai_novels.config.hub import ConfigHub
+from ai_novels.core.context import WorkflowContext
 from ai_novels.database.engine import get_session
 from ai_novels.models.task import Task, TaskStatus
 from ai_novels.repositories.task_repository import TaskRepository
@@ -133,12 +134,19 @@ async def create_task(
     req: TaskCreateRequest,
     background_tasks: BackgroundTasks,
     orchestrator=Depends(get_task_orchestrator),
+    ctx: WorkflowContext = Depends(get_optional_context),
 ):
     """提交新任务
 
     当 agent_name='coordinator' 时使用完整的 DAG 小说生成工作流，
     否则通过 TaskOrchestrator 调度。
     """
+    # 注入租户上下文到 payload
+    if req.payload is None:
+        req.payload = {}
+    req.payload.setdefault("tenant_id", ctx.tenant_id)
+    req.payload.setdefault("user_id", ctx.user_id)
+    req.payload.setdefault("trace_id", ctx.trace_id)
     # coordinator 任务：使用 TaskController 的完整 DAG 工作流
     if req.agent_name == "coordinator":
         payload = req.payload or {}
@@ -189,8 +197,9 @@ async def create_task(
 @router.get("", response_model=TaskListResponse, summary="获取任务列表")
 async def list_tasks(
     orchestrator=Depends(get_task_orchestrator),
+    ctx: WorkflowContext = Depends(get_optional_context),
 ):
-    """列出所有任务状态"""
+    """列出所有任务状态 (按租户隔离)"""
     tasks = []
 
     # 优先从队列获取真实任务
@@ -227,10 +236,13 @@ async def list_tasks(
     except Exception:
         pass
 
-    # 合并 DB 中的任务（coordinator DAG 任务）
+    # 合并 DB 中的任务 (按租户过滤)
     try:
         async with get_session() as session:
-            db_tasks = await _task_repo.get_all(session, limit=10000)
+            db_tasks = await _task_repo.get_all(
+                session, limit=10000,
+                tenant_id=ctx.tenant_id,
+            )
         for t in db_tasks:
             if not any(x.task_id == t.id for x in tasks):
                 tasks.append(

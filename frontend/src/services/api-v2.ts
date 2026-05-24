@@ -12,6 +12,11 @@ const v2: AxiosInstance = axios.create(v2Config)
 v2.interceptors.request.use((config) => {
   config.headers = config.headers || {}
   config.headers['X-Request-ID'] = crypto.randomUUID()
+  // [Phase 1] 自动附加 JWT Token
+  const token = localStorage.getItem('ai_novels_jwt')
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`
+  }
   return config
 })
 
@@ -205,6 +210,13 @@ export const apiV2 = {
     v2.get(`/logs/${category}/stats`) as Promise<any>,
   searchLogs: (params: { q: string; level?: string; max_results?: number }) =>
     v2.get('/logs/search', { params }) as Promise<any>,
+
+  // --- [Phase 1] 认证 ---
+  login: (username: string, password: string, tenant_id: string = 'default') =>
+    v2.post('/auth/login', { username, password, tenant_id }) as Promise<any>,
+  register: (username: string, email: string, password: string, tenant_id: string = 'default') =>
+    v2.post('/auth/register', { username, email, password, tenant_id }) as Promise<any>,
+  getMe: () => v2.get('/auth/me') as Promise<any>,
 }
 
 export default apiV2

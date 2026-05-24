@@ -25,6 +25,7 @@ src_dir = os.path.join(cwd, 'src')
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
+from ai_novels.agents.base import AgentConfig
 from ai_novels.agents.coordinator import CoordinatorAgent
 from ai_novels.agents.agent_communicator import AgentCommunicator
 from ai_novels.agents.implementations import (
@@ -105,6 +106,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ────────────────────────────────────────────────────────────────────
+# [增量] 注册租户上下文中间件 (在 CORS 之后, 路由之前)
+# ────────────────────────────────────────────────────────────────────
+
+from ai_novels.api.auth.middleware import TenantContextMiddleware
+
+app.add_middleware(
+    TenantContextMiddleware,
+    auth_mode="optional",  # Phase 1: optional → Phase 2+: required
+)
+
 # 应用启动事件
 @app.on_event("startup")
 async def startup_event():
@@ -126,6 +138,93 @@ async def startup_event():
     else:
         log_error("Failed to initialize legacy ConfigManager")
 
+    # ================================================================
+    # [Phase 1] 初始化 JWT 配置
+    # ================================================================
+    try:
+        from ai_novels.api.auth.jwt import configure_jwt
+        configure_jwt(
+            secret=config_hub.get_jwt_secret(),
+            algorithm=config_hub.get_jwt_algorithm(),
+        )
+        log_info(f"JWT configured: algorithm={config_hub.get_jwt_algorithm()}")
+    except Exception as e:
+        log_error(f"JWT configuration failed (non-critical): {e}")
+
+    # ================================================================
+    # [Phase 1] 初始化 Redis (短时记忆后端)
+    # ================================================================
+    redis_client = None
+    try:
+        import redis.asyncio as aioredis
+        redis_url = config_hub.get("redis.url", "redis://localhost:6379/0")
+        redis_client = aioredis.from_url(
+            redis_url,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True,
+            health_check_interval=30,
+        )
+        await redis_client.ping()
+        app.state.redis_client = redis_client
+        log_info(f"Redis connected: {redis_url}")
+    except Exception as e:
+        log_error(f"Redis connection failed (memory degraded): {e}")
+        app.state.redis_client = None
+
+    # ================================================================
+    # [Phase 1] 初始化数据库连接池
+    # ================================================================
+    try:
+        from ai_novels.database.tenant_session import init_tenant_session_factory
+        dsn = config_hub.get("database.dsn",
+                             "postgresql+asyncpg://localhost/ai_novels")
+        await init_tenant_session_factory(dsn)
+        log_info(f"Tenant session factory initialized: {dsn}")
+    except Exception as e:
+        log_error(f"Database session factory init failed (non-critical): {e}")
+
+    # ================================================================
+    # [Phase 1] 初始化三层记忆系统
+    # ================================================================
+    try:
+        from ai_novels.core.memory import (
+            init_memory_manager,
+            WorkingMemoryBackend,
+            ShortTermMemoryBackend,
+            LongTermMemoryBackend,
+        )
+        short_backend = ShortTermMemoryBackend(
+            redis_client or None  # None 时 search 返回空
+        )
+        from ai_novels.database.tenant_session import get_tenant_session_factory
+        # ChromaDB client (从 app.state 获取或创建)
+        chroma_client = getattr(app.state, 'chroma_client', None)
+        if chroma_client is None:
+            try:
+                import chromadb
+                chroma_host = config_hub.get("chromadb.host", "localhost")
+                chroma_port = config_hub.get("chromadb.port", 8000)
+                chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+                app.state.chroma_client = chroma_client
+            except Exception:
+                chroma_client = None
+                log_error("ChromaDB unavailable (long-term memory degraded)")
+
+        long_backend = LongTermMemoryBackend(
+            chroma_client=chroma_client,
+            pg_session_factory=get_tenant_session_factory,
+        )
+        init_memory_manager(
+            working=WorkingMemoryBackend(max_size_per_scope=500),
+            short=short_backend,
+            long=long_backend,
+        )
+        log_info("Memory system initialized: working+short+long")
+    except Exception as e:
+        log_error(f"Memory system init failed (non-critical): {e}")
+
     # 初始化CoordinatorAgent（不启动通信器以避免阻塞）
     app.state.coordinator = CoordinatorAgent()
 
@@ -137,20 +236,20 @@ async def startup_event():
 
         # 注册核心 Agent 作为 workers（解决"纸老虎"问题）
         agent_classes = [
-            ConfigEnhancerAgent,
-            OutlinePlannerAgent,
-            CharacterGeneratorAgent,
-            WorldBuilderAgent,
-            ChapterSummaryAgent,
-            HookGeneratorAgent,
-            ConflictGeneratorAgent,
-            ContentGeneratorAgent,
-            QualityCheckerAgent,
+            (ConfigEnhancerAgent, "config_enhancer"),
+            (OutlinePlannerAgent, "outline_planner"),
+            (CharacterGeneratorAgent, "character_generator"),
+            (WorldBuilderAgent, "world_builder"),
+            (ChapterSummaryAgent, "chapter_summary"),
+            (HookGeneratorAgent, "hook_generator"),
+            (ConflictGeneratorAgent, "conflict_generator"),
+            (ContentGeneratorAgent, "content_generator"),
+            (QualityCheckerAgent, "quality_checker"),
         ]
         registered = 0
-        for agent_cls in agent_classes:
+        for agent_cls, agent_name in agent_classes:
             try:
-                agent = agent_cls()
+                agent = agent_cls(AgentConfig.from_config(agent_name))
                 agent.initialize()
                 if task_orch.register_worker(agent):
                     registered += 1
@@ -200,6 +299,14 @@ async def shutdown_event():
     """应用关闭时清理"""
     log_info("AI-Novels API shutting down...")
 
+    # 刷新日志缓冲区
+    try:
+        from ai_novels.utils.logger import flush_all_logs
+        flush_all_logs()
+        log_info("Log buffers flushed")
+    except Exception as e:
+        log_error(f"Log flush error: {e}")
+
     # 停止通信
     # 通信器按需启动，不需要在关闭时停止
     # if hasattr(app.state, 'coordinator') and hasattr(app.state.coordinator, 'stop_communication'):
@@ -217,19 +324,29 @@ async def shutdown_event():
 
 # SSE 事件流端点 — 桥接 EventBus 到前端
 @app.get("/api/v2/events")
-async def event_stream():
-    """Server-Sent Events 端点 — 实时推送 Agent 执行事件"""
+async def event_stream(request: Request):
+    """Server-Sent Events 端点 — 实时推送 Agent 执行事件 (仅推送同租户)"""
     from ai_novels.core.event_bus import EventType
+    from ai_novels.core.context import get_current_context, WorkflowContext
+
+    # 获取当前租户
+    ctx = get_current_context() or WorkflowContext.default()
+    tenant_id = ctx.tenant_id
 
     queue: asyncio.Queue = asyncio.Queue()
     active = True
 
     def on_event(event):
-        if active:
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                pass
+        if not active:
+            return
+        # 租户过滤: 仅推送同租户事件
+        event_tenant = (event.payload or {}).get("tenant_id", tenant_id)
+        if event_tenant != tenant_id and tenant_id != "default":
+            return
+        try:
+            queue.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
 
     # 订阅关键事件
     unsubscribe = event_bus.subscribe(
@@ -300,6 +417,10 @@ app.include_router(health_router, prefix="/api/v2")
 
 # 日志浏览路由
 app.include_router(log_router, prefix="/api/v2")
+
+# [Phase 1] 认证路由
+from ai_novels.api.routes.auth_routes import router as auth_router
+app.include_router(auth_router)
 
 # 健康检查
 @app.get("/health")

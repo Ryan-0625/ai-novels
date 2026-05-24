@@ -47,6 +47,12 @@ class ChapterOutline(SQLModel, table=True):
         sa_column=Column(JSONB, default=list),
     )
 
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
+
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True)),
@@ -84,6 +90,12 @@ class ChapterContent(SQLModel, table=True):
     content: str = Field(default="", sa_column=Column(Text))
     word_count: int = Field(default=0)
     status: str = Field(default="draft", index=True)  # draft, reviewed, published
+
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
 
     # JSONB 元数据
     meta_info: Dict[str, Any] = Field(

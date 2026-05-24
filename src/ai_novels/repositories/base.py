@@ -83,3 +83,74 @@ class BaseRepository(Generic[ModelT]):
         """检查实体是否存在"""
         entity = await self.get_by_id(session, entity_id)
         return entity is not None
+
+
+# ────────────────────────────────────────────────────────────────────
+# [增量] TenantAwareRepository — 装饰器模式
+# ────────────────────────────────────────────────────────────────────
+
+class TenantAwareRepository(Generic[ModelT]):
+    """租户感知 Repository 装饰器
+
+    自动从 WorkflowContext 获取 tenant_id 并注入查询/创建操作。
+    对调用方透明 —— 只需在 DI 容器中将 BaseRepository 替换为此类即可。
+    create() 操作自动填充 tenant_id。
+    """
+
+    def __init__(self, inner: BaseRepository[ModelT]):
+        self._inner = inner
+        self._model = inner._model
+
+    async def get_by_id(self, session: AsyncSession, entity_id: str,
+                        tenant_id: Optional[str] = None) -> Optional[ModelT]:
+        tid = tenant_id or _resolve_tenant_id()
+        if tid == "default":
+            return await self._inner.get_by_id(session, entity_id)
+        from sqlmodel import select
+        stmt = select(self._model).where(
+            self._model.id == entity_id,
+            self._model.tenant_id == tid,
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_all(self, session: AsyncSession, *,
+                      offset: int = 0, limit: int = 100,
+                      tenant_id: Optional[str] = None) -> List[ModelT]:
+        tid = tenant_id or _resolve_tenant_id()
+        if tid == "default":
+            return await self._inner.get_all(session, offset=offset, limit=limit)
+        from sqlmodel import select
+        stmt = select(self._model).where(
+            self._model.tenant_id == tid
+        ).offset(offset).limit(limit)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def create(self, session: AsyncSession, entity: ModelT,
+                     tenant_id: Optional[str] = None) -> ModelT:
+        tid = tenant_id or _resolve_tenant_id()
+        if hasattr(entity, "tenant_id") and not getattr(entity, "tenant_id"):
+            setattr(entity, "tenant_id", tid)
+        return await self._inner.create(session, entity)
+
+    async def update(self, session: AsyncSession, entity: ModelT) -> ModelT:
+        return await self._inner.update(session, entity)
+
+    async def delete(self, session: AsyncSession, entity: ModelT) -> None:
+        return await self._inner.delete(session, entity)
+
+    async def delete_by_id(self, session: AsyncSession, entity_id: str) -> bool:
+        return await self._inner.delete_by_id(session, entity_id)
+
+    async def count(self, session: AsyncSession) -> int:
+        return await self._inner.count(session)
+
+    async def exists(self, session: AsyncSession, entity_id: str) -> bool:
+        return await self._inner.exists(session, entity_id)
+
+
+def _resolve_tenant_id() -> str:
+    """从当前上下文解析 tenant_id"""
+    from ai_novels.core.context import get_current_tenant_id
+    return get_current_tenant_id()

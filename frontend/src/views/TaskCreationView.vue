@@ -62,7 +62,7 @@ const form = reactive({
 })
 
 // LLM 模型名称（从后端配置获取）
-const aiModelName = ref('Qwen2.5-7B')
+const aiModelName = ref('deepseek-v4-flash')
 
 const fetchModelName = async () => {
   try {

@@ -44,6 +44,12 @@ class Novel(SQLModel, table=True):
     word_count_current: int = Field(default=0)
     status: str = Field(default="draft", index=True)  # draft, writing, completed, archived
 
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
+
     # JSONB 存储动态配置
     settings: Dict[str, Any] = Field(
         default_factory=dict,
@@ -101,6 +107,12 @@ class Character(SQLModel, table=True):
     core_drive: str = Field(default="")
     core_wound: str = Field(default="")
     voice_style: str = Field(default="")
+
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
 
     # JSONB 扩展档案
     profile: Dict[str, Any] = Field(
@@ -165,6 +177,12 @@ class WorldEntity(SQLModel, table=True):
         sa_column=Column(JSONB, default=list),
     )
 
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
+
     # JSONB 因果关系网络 (Step1 CausalReasoning)
     causal_links: Dict[str, Any] = Field(
         default_factory=dict,
@@ -207,6 +225,12 @@ class OutlineNode(SQLModel, table=True):
     title: str = Field(default="")
     order_index: int = Field(default=0)
     content: Optional[str] = Field(default=None, sa_column=Column(Text))
+
+    # [增量] 多租户字段
+    tenant_id: Optional[str] = Field(
+        default=None, foreign_key="tenants.id", index=True,
+        sa_column=Column(String(64), nullable=True),
+    )
 
     # JSONB 元数据
     meta_info: Dict[str, Any] = Field(

@@ -164,7 +164,7 @@ async def system_health(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "connections": _load_connections(),
     }
-    for name in ["mysql", "neo4j", "mongodb", "chromadb", "rocketmq_producer", "rocketmq_consumer", "ollama"]:
+    for name in ["mysql", "neo4j", "mongodb", "chromadb", "ollama"]:
         try:
             health = health_service.check_single(name)
             comp_dict = health.to_dict() if hasattr(health, 'to_dict') else {"status": health.value if hasattr(health, 'value') else health}

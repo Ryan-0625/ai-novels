@@ -25,6 +25,7 @@ const routes: Array<RouteRecordRaw> = [
           title: '创建任务',
           icon: 'Plus',
           order: 1,
+          requiresAuth: true,
         } satisfies RouteMeta,
       },
       {
@@ -115,6 +116,15 @@ const routes: Array<RouteRecordRaw> = [
       order: 99,
     } satisfies RouteMeta,
   },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: {
+      title: '登录',
+      order: 100,
+    } satisfies RouteMeta,
+  },
 ]
 
 // 创建路由实例
@@ -123,24 +133,31 @@ const router = createRouter({
   routes,
 })
 
-// 路由守卫
+// 路由守卫: 认证检查
 router.beforeEach((to, from, next) => {
-  // 设置页面标题
   const title = to.meta.title as string
   document.title = title ? `${title} - AI小说生成系统` : 'AI小说生成系统'
 
-  // 权限检查（示例）
-  if (to.meta.requiresAuth && !isAuthenticated()) {
-    next('/login')
+  // 受保护路径: 所有 /tasks/* 需要认证
+  const publicPaths = ['/login', '/about']
+  if (!publicPaths.includes(to.path) && !isAuthenticated()) {
+    next(`/login?redirect=${to.path}`)
   } else {
     next()
   }
 })
 
-// 简单的身份验证状态
+// 认证检查 — 从 localStorage 读取 JWT
 function isAuthenticated(): boolean {
-  // 这里可以添加实际的身份验证逻辑
-  return true
+  try {
+    const token = localStorage.getItem('ai_novels_jwt')
+    if (!token) return false
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    const exp = payload.exp * 1000
+    return Date.now() < exp
+  } catch {
+    return false
+  }
 }
 
 export default router

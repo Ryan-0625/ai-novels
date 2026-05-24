@@ -59,6 +59,20 @@ class ErrorCode(Enum):
     MISSING_REQUIRED_FIELD = 7002
     INVALID_FORMAT = 7003
 
+    # ────────────────────────────────────────────────────────────────
+    # [增量] 多租户/认证错误码 (8000-8999)
+    # ────────────────────────────────────────────────────────────────
+    AUTH_ERROR = 8000
+    AUTH_TOKEN_EXPIRED = 8001
+    AUTH_INVALID_TOKEN = 8002
+    AUTH_INSUFFICIENT_PERMISSIONS = 8003
+    TENANT_ERROR = 8100
+    TENANT_NOT_FOUND = 8101
+    TENANT_QUOTA_EXCEEDED = 8102
+    MEMORY_ERROR = 8200
+    MEMORY_BACKEND_UNAVAILABLE = 8201
+    MEMORY_QUOTA_EXCEEDED = 8202
+
 
 class AINovelsException(Exception):
     """

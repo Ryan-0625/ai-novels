@@ -239,6 +239,19 @@ class ConfigHub:
         """导出脱敏配置字典（用于日志/监控）"""
         return self.config.to_safe_dict()
 
+    # ────────────────────────────────────────────────────────────────
+    # [增量] JWT 配置读取
+    # ────────────────────────────────────────────────────────────────
+
+    def get_jwt_secret(self) -> str:
+        return self.get("auth.jwt_secret", "change-me-in-production")
+
+    def get_jwt_algorithm(self) -> str:
+        return self.get("auth.jwt_algorithm", "HS256")
+
+    def get_auth_mode(self) -> str:
+        return self.get("auth.mode", "optional")
+
     def __repr__(self) -> str:
         if self._config:
             return f"ConfigHub({self._config!r})"

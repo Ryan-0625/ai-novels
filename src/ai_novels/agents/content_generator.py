@@ -791,8 +791,8 @@ class ContentGeneratorAgent(BaseAgent):
             return self._clean_generated_content(llm_response)
 
         raise RuntimeError(
-            f"LLM generation failed for context={context.prompt_context[:50] if context.prompt_context else 'empty'}, "
-            f"style={style.name}. No fallback available — LLM must return valid content."
+            f"LLM generation failed for chapter={context.chapter_id}, "
+            f"style pacing={style.pacing}. No fallback available — LLM must return valid content."
         )
 
     def _get_language_from_message(self) -> tuple:

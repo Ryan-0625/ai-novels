@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from ai_novels.api.dependencies import get_config_hub_dep
+from ai_novels.api.dependencies import get_config_hub_dep, get_optional_context
 from ai_novels.config.hub import ConfigHub
+from ai_novels.core.context import WorkflowContext
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -73,8 +74,9 @@ def get_task_orchestrator(request: Request):
 @router.get("", response_model=List[AgentInfoResponse], summary="列出所有Agent")
 async def list_agents(
     orchestrator=Depends(get_task_orchestrator),
+    ctx: WorkflowContext = Depends(get_optional_context),
 ):
-    """列出所有已注册的Agent"""
+    """列出所有已注册的Agent (按租户)"""
     workers = orchestrator.list_workers()
     return [
         AgentInfoResponse(

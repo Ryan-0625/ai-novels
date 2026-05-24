@@ -23,6 +23,10 @@ from ai_novels.core.llm_router import LLMRouter, get_llm_router
 from ai_novels.core.event_bus import event_bus, EventType
 from ai_novels.config.manager import settings
 
+# [增量] 上下文与记忆导入 (延迟导入以避免循环依赖)
+# WorkflowContext / MemoryManager 在 process_with_context / context 属性中延迟导入
+
+
 
 class AgentState(Enum):
     """Agent状态枚举"""
@@ -54,6 +58,30 @@ class Message:
     timestamp: float = field(default_factory=time.time)
     sender: Optional[str] = None
     receiver: Optional[str] = None
+
+    # ================================================================
+    # [增量] 上下文便捷属性
+    # ================================================================
+
+    @property
+    def tenant_id(self) -> str:
+        return self.metadata.get("tenant_id", "default")
+
+    @tenant_id.setter
+    def tenant_id(self, value: str):
+        self.metadata["tenant_id"] = value
+
+    @property
+    def trace_id(self) -> str:
+        return self.metadata.get("trace_id", "no-trace")
+
+    @trace_id.setter
+    def trace_id(self, value: str):
+        self.metadata["trace_id"] = value
+
+    @property
+    def session_id(self) -> str:
+        return self.metadata.get("session_id", "")
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -407,6 +435,110 @@ class BaseAgent(ABC):
         if tool_name in self.config.tools:
             return self._execute_tool(tool_name, params)
         return None
+
+    # ================================================================
+    # [增量] WorkflowContext 集成
+    # ================================================================
+
+    _context: Optional["WorkflowContext"] = None
+
+    def process_with_context(self, message: Message, ctx: "WorkflowContext") -> Message:
+        """带显式上下文的处理入口 (推荐新 Agent 实现此方法)
+
+        Args:
+            message: 输入消息
+            ctx: 工作流上下文 (含 tenant/user/trace/memory)
+
+        Returns:
+            处理后的消息
+
+        Notes:
+            默认实现将 ctx 注入 message.metadata 后降级调用 process()。
+            新 Agent 应覆盖此方法以直接使用 ctx。
+        """
+        message.metadata["tenant_id"] = ctx.tenant_id
+        message.metadata["user_id"] = ctx.user_id
+        message.metadata["trace_id"] = ctx.trace_id
+        message.metadata["session_id"] = ctx.session_id
+        self._context = ctx
+        return self.process(message)
+
+    @property
+    def context(self) -> "WorkflowContext":
+        """获取当前执行上下文
+
+        优先级:
+        1. process_with_context 传入的显式 ctx
+        2. contextvars 中的当前上下文 (中间件注入)
+        3. WorkflowContext.default() (单租户模式)
+        """
+        if self._context is not None:
+            return self._context
+        from ai_novels.core.context import get_current_context, WorkflowContext as WC
+        ctx = get_current_context()
+        if ctx is not None:
+            return ctx
+        return WC.default()
+
+    def current_tenant_id(self) -> str:
+        return self.context.tenant_id
+
+    def current_session_id(self) -> str:
+        return self.context.session_id
+
+    def current_trace_id(self) -> str:
+        return self.context.trace_id
+
+    # ================================================================
+    # [增量] 记忆访问方法
+    # ================================================================
+
+    def save_memory(self, key: str, value: Any,
+                    memory_type: "MemoryType" = None,
+                    ttl: Optional[int] = None) -> bool:
+        """保存到当前上下文的记忆空间"""
+        import asyncio
+        from ai_novels.core.memory import get_memory_manager, MemoryType as MT
+        mt = memory_type or MT.WORKING
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                fut = asyncio.ensure_future(
+                    get_memory_manager().save(self.context.memory, key, value, mt, ttl)
+                )
+                return True
+            return False
+        except RuntimeError:
+            return False
+
+    def load_memory(self, key: str,
+                    memory_type: "MemoryType" = None) -> Optional[Any]:
+        import asyncio
+        from ai_novels.core.memory import get_memory_manager, MemoryType as MT
+        mt = memory_type or MT.WORKING
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                fut = asyncio.ensure_future(
+                    get_memory_manager().load(self.context.memory, key, mt)
+                )
+                return fut  # 返回 coroutine 供外部 await
+            return None
+        except RuntimeError:
+            return None
+
+    def search_memory(self, query: str, limit: int = 5) -> Any:
+        from ai_novels.core.memory import get_memory_manager
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return asyncio.ensure_future(
+                    get_memory_manager().fuse(self.context.memory, query, limit)
+                )
+            return []
+        except RuntimeError:
+            return []
 
     def _execute_tool(self, tool_name: str, params: Dict[str, Any]) -> Any:
         """

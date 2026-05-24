@@ -39,6 +39,26 @@ const genreMap: Record<string, { label: string; icon: string }> = {
   other: { label: '其他', icon: '📖' },
 }
 
+// Style label map (value -> Chinese label)
+const styleMap: Record<string, string> = {
+  light: '轻松',
+  serious: '严肃',
+  humor: '幽默',
+  passion: '热血',
+  suspense: '悬疑',
+  descriptive: '细腻',
+  concise: '简洁',
+  poetic: '诗意',
+}
+
+const audienceMap: Record<string, string> = {
+  general: '大众',
+  youth: '青少年',
+  adult: '成年',
+  female: '女性',
+  male: '男性',
+}
+
 // Live content preview
 const liveContent = ref('')
 const liveContentChapter = ref<number | null>(null)
@@ -478,11 +498,11 @@ onUnmounted(() => {
         <div class="config-grid">
           <div class="config-item">
             <span class="config-label">风格</span>
-            <span class="config-value">{{ optimizedConfig.style }}</span>
+            <span class="config-value">{{ styleMap[optimizedConfig.style] || optimizedConfig.style }}</span>
           </div>
           <div class="config-item">
             <span class="config-label">目标读者</span>
-            <span class="config-value">{{ optimizedConfig.target_audience }}</span>
+            <span class="config-value">{{ audienceMap[optimizedConfig.target_audience] || optimizedConfig.target_audience }}</span>
           </div>
           <div class="config-item">
             <span class="config-label">章节数</span>

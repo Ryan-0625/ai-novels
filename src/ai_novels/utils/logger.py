@@ -462,6 +462,84 @@ class HierarchicalLogger:
 # 全局实例
 logger = HierarchicalLogger()
 
+
+# ────────────────────────────────────────────────────────────────────
+# [增量] 结构化日志上下文
+# ────────────────────────────────────────────────────────────────────
+
+import json as _json
+from typing import Dict as _Dict, Any as _Any
+
+_structured_log_buffer: _Dict[str, list] = {}
+_BUFFER_LIMIT = 100
+
+
+def get_log_context() -> _Dict[str, str]:
+    """获取当前请求的日志上下文 (自动从 contextvars 读取)"""
+    try:
+        from ai_novels.core.context import (
+            get_current_tenant_id,
+            get_current_user_id,
+            get_current_trace_id,
+            get_current_session_id,
+        )
+        return {
+            "tenant_id": get_current_tenant_id(),
+            "user_id": get_current_user_id(),
+            "trace_id": get_current_trace_id(),
+            "session_id": get_current_session_id(),
+        }
+    except ImportError:
+        return {}
+    except Exception:
+        return {}
+
+
+def log_structured(level: str, message: str, **extra) -> None:
+    """输出结构化 JSON 日志 (与旧文本日志并行)"""
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "level": level.upper(),
+        "message": message,
+        **get_log_context(),
+        **extra,
+    }
+    line = _json.dumps(record, ensure_ascii=False)
+    _buffer_write("_structured", line)
+
+
+def _buffer_write(category: str, line: str) -> None:
+    """环形缓冲区写入, 超限时触发刷新"""
+    if category not in _structured_log_buffer:
+        _structured_log_buffer[category] = []
+    buf = _structured_log_buffer[category]
+    buf.append(line)
+    if len(buf) >= _BUFFER_LIMIT:
+        _flush_buffer(category)
+
+
+def _flush_buffer(category: str) -> None:
+    """将缓冲区写入磁盘"""
+    import os
+    buf = _structured_log_buffer.get(category, [])
+    if not buf:
+        return
+    _structured_log_buffer[category] = []
+    log_dir = getattr(logger, '_log_dir', './logs')
+    os.makedirs(log_dir, exist_ok=True)
+    filepath = os.path.join(log_dir, f"{category}.jsonl")
+    try:
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write("\n".join(buf) + "\n")
+    except OSError:
+        pass
+
+
+def flush_all_logs() -> None:
+    """刷新所有日志缓冲区 (注册到 FastAPI shutdown 事件)"""
+    for cat in list(_structured_log_buffer.keys()):
+        _flush_buffer(cat)
+
 # 便捷函数（保持向后兼容）
 def log_info(message: str, **kwargs):
     """信息日志"""

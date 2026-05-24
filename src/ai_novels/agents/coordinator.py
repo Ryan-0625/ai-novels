@@ -18,6 +18,7 @@ from enum import Enum
 from datetime import datetime
 import threading
 import concurrent.futures
+import asyncio
 
 from .base import BaseAgent, AgentConfig, Message, MessageType
 from .agent_communicator import AgentCommunicator, AgentMessageHandler
@@ -146,6 +147,12 @@ class CoordinatorAgent(BaseAgent):
             # 从配置文件读取 coordinator 配置
             config = AgentConfig.from_config("coordinator")
         super().__init__(config)
+
+        # 保存主事件循环引用（用于线程安全的事件发射）
+        try:
+            self._event_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self._event_loop = None
 
         # 工作流状态
         self._workflow_state = WorkflowState.IDLE
@@ -1353,7 +1360,12 @@ Return as JSON with the same structure."""
             agent_class = agent_map.get(agent_name)
 
         if agent_class:
-            return agent_class()
+            # 从 agents.json 读取配置并传递给 Agent
+            cfg_name = agent_name
+            if agent_name.startswith("content_generator_chapter_"):
+                cfg_name = "content_generator"
+            cfg = AgentConfig.from_config(cfg_name)
+            return agent_class(cfg)
         return None
 
     def _save_node_result(self, node_name: str, result: Dict[str, Any]):
@@ -1598,21 +1610,20 @@ Return as JSON with the same structure."""
         return context_map.get(agent_name, f"Execute {agent_name} tasks.")
 
     def _emit_event(self, event_type: str, payload: Dict[str, Any]) -> None:
-        """发布事件到 EventBus（fire-and-forget，同步上下文安全）"""
-        try:
-            import asyncio
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(
-                    _event_bus.publish_type(
-                        event_type,
-                        payload=payload,
-                        source="coordinator",
-                    )
-                )
-        except RuntimeError:
-            logger = get_logger()
-            logger.debug("No running event loop for event emission", event_type=event_type)
+        """发布事件到 EventBus（线程安全，支持从线程池发射）"""
+        loop = self._event_loop
+        if loop is None or not loop.is_running():
+            return
+
+        coro = _event_bus.publish_type(
+            event_type, payload=payload, source="coordinator",
+        )
+
+        # 判断是否在主事件循环线程中
+        if threading.current_thread() is threading.main_thread():
+            loop.create_task(coro)
+        else:
+            asyncio.run_coroutine_threadsafe(coro, loop)
 
     def get_execution_status(self) -> Dict[str, Any]:
         """获取执行状态"""
