@@ -46,8 +46,8 @@ class Novel(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     # JSONB 存储动态配置
@@ -110,8 +110,8 @@ class Character(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     # JSONB 扩展档案
@@ -179,8 +179,8 @@ class WorldEntity(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     # JSONB 因果关系网络 (Step1 CausalReasoning)
@@ -228,8 +228,8 @@ class OutlineNode(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     # JSONB 元数据

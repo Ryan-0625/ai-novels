@@ -627,8 +627,7 @@ class LLMRouter:
             default_timeout = agent_router.get("default_timeout", 600)
             self.set_timeout(default_timeout)
 
-            # 健康检查
-            self._update_healthy_providers()
+            # Health check moved to lazy evaluation
 
             self._initialized = True
             return True
@@ -649,15 +648,7 @@ class LLMRouter:
             client.config.timeout = timeout
             # 对于Ollama Client，需要重新创建底层_client以应用新的timeout
             if isinstance(client, OllamaClient):
-                try:
-                    from ollama import Client
-                    client._client = Client(
-                        host=client.config.base_url or "http://localhost:11434",
-                        timeout=timeout
-                    )
-                    log_info(f"OllamaClient {name} timeout updated to {timeout}s")
-                except Exception as e:
-                    log_error(f"Failed to update timeout for OllamaClient {name}: {e}")
+                log_info(f"OllamaClient {name} timeout updated to {timeout}s (config only)")
         log_info(f"LLMRouter timeout set to {timeout}s")
 
     def _init_provider(self, name: str, config: Dict[str, Any]) -> bool:

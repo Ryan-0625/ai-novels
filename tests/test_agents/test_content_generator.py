@@ -83,8 +83,10 @@ class TestContentGeneratorProcess:
         assert "Total Words" in result.content
 
     def test_general_help(self, agent):
-        msg = Message(id="t8", type=MessageType.TEXT, content="help")
-        result = agent.process(msg)
+        mock_text = "Help information about available commands..."
+        with patch.object(agent, '_generate_with_llm', return_value=mock_text):
+            msg = Message(id="t8", type=MessageType.TEXT, content="help")
+            result = agent.process(msg)
         assert result is not None
         # 未识别命令默认走内容生成
         assert result.type == MessageType.TEXT

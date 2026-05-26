@@ -79,6 +79,9 @@ const statusIcons: Record<string, any> = {
   cancelled: Close,
 }
 
+// 筛选状态
+const filterStatus = ref('all')
+
 // 获取任务列表（v2 API）
 const fetchTasks = async () => {
   loading.value = true
@@ -337,6 +340,12 @@ const statCards = computed(() => [
     bgColor: 'rgba(239, 68, 68, 0.15)'
   },
 ])
+
+// 筛选后的任务列表
+const filteredTasks = computed(() => {
+  if (filterStatus.value === 'all') return tasks.value
+  return tasks.value.filter(t => t.status === filterStatus.value)
+})
 </script>
 
 <template>
@@ -355,11 +364,10 @@ const statCards = computed(() => [
       <el-button 
         type="primary" 
         @click="fetchTasks" 
-        :loading="loading" 
-        class="refresh-btn"
+        :class="['refresh-btn', { 'is-loading': loading }]"
         circle
       >
-        <el-icon :size="18"><Refresh /></el-icon>
+        <el-icon :size="18" :class="{ 'spin-anim': loading }"><Refresh /></el-icon>
       </el-button>
     </div>
 
@@ -418,7 +426,7 @@ const statCards = computed(() => [
       <div class="task-table-wrapper">
         <el-table
           v-loading="loading"
-          :data="tasks"
+          :data="filteredTasks"
           class="task-table"
           :header-cell-style="{ 
             background: 'transparent', 
@@ -512,11 +520,6 @@ export default {
   name: 'TaskMonitorView',
   components: {
     Monitor
-  },
-  data() {
-    return {
-      filterStatus: 'all'
-    }
   }
 }
 </script>
@@ -611,6 +614,19 @@ export default {
   border: 1px solid rgba(139, 92, 246, 0.3) !important;
   color: #a855f7 !important;
   transition: all 0.3s ease;
+}
+
+.refresh-btn.is-loading {
+  pointer-events: none;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-anim {
+  animation: spin 1s linear infinite;
 }
 
 .refresh-btn:hover {

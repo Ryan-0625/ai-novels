@@ -27,11 +27,17 @@ interface Props {
   edges: DagEdge[]
   width?: number
   height?: number
+  activeNodeId?: string | null
 }
+
+const emit = defineEmits<{
+  (e: 'node-click', nodeId: string): void
+}>()
 
 const props = withDefaults(defineProps<Props>(), {
   width: 800,
   height: 400,
+  activeNodeId: null,
 })
 
 const container = ref<HTMLDivElement>()
@@ -135,8 +141,12 @@ function render() {
   nodeGroups.append('circle')
     .attr('r', 18)
     .attr('fill', d => statusColor[d.status] || '#94a3b8')
-    .attr('stroke', '#1e293b')
-    .attr('stroke-width', 2)
+    .attr('stroke', d => d.id === props.activeNodeId ? '#fbbf24' : '#1e293b')
+    .attr('stroke-width', d => d.id === props.activeNodeId ? 3 : 2)
+    .style('cursor', 'pointer')
+    .on('click', (event, d) => {
+      emit('node-click', d.id)
+    })
 
   nodeGroups.append('text')
     .attr('dy', 4)

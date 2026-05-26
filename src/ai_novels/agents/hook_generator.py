@@ -17,7 +17,7 @@ import hashlib
 
 from .base import BaseAgent, AgentConfig, Message, MessageType
 from ..vector_store.base import BaseVectorStore
-from ..vector_store.chroma_store import ChromaVectorStore
+# Lazy import below: ChromaVectorStore
 from ai_novels.utils import log_error
 
 
@@ -125,6 +125,11 @@ class HookGeneratorAgent(BaseAgent):
     - 阅读留存率预测
     """
 
+    def _get_chroma_vector_store(self):
+        """Lazy import to avoid slow chromadb import at module level."""
+        from ..vector_store.chroma_store import ChromaVectorStore
+        return ChromaVectorStore()
+
     def __init__(self, config: AgentConfig = None):
         if config is None:
             config = AgentConfig(
@@ -159,7 +164,7 @@ class HookGeneratorAgent(BaseAgent):
         """初始化智能体"""
         try:
             # 初始化向量存储
-            self._vector_store = ChromaVectorStore(
+            self._vector_store = self._get_chroma_vector_store(
                 collection_name="hooks",
                 embedding_model=self._embedding_model
             )

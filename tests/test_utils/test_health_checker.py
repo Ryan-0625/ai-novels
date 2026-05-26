@@ -13,7 +13,7 @@ from ai_novels.utils.health_checker import check_component_health, check_system_
 class TestCheckComponentHealth:
     """Tests for check_component_health()"""
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_component_healthy(self, mock_get_service):
         mock_service = MagicMock()
         mock_health = MagicMock()
@@ -33,7 +33,7 @@ class TestCheckComponentHealth:
         assert result["name"] == "mysql"
         mock_service.check_single.assert_called_once_with("mysql")
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_component_unhealthy(self, mock_get_service):
         mock_service = MagicMock()
         mock_health = MagicMock()
@@ -52,7 +52,7 @@ class TestCheckComponentHealth:
         assert result["status"] == "unhealthy"
         assert "error" in result["details"]
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_component_without_to_dict(self, mock_get_service):
         """Fallback: check_single returns object without to_dict()"""
         mock_service = MagicMock()
@@ -68,7 +68,7 @@ class TestCheckComponentHealth:
         assert result["name"] == "unknown"
         assert "status" in result
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_service_exception(self, mock_get_service):
         mock_get_service.side_effect = RuntimeError("HealthService unavailable")
 
@@ -79,7 +79,7 @@ class TestCheckComponentHealth:
 class TestCheckSystemHealth:
     """Tests for check_system_health()"""
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_healthy_system(self, mock_get_service):
         mock_service = MagicMock()
         mock_service.check_all.return_value = {
@@ -95,7 +95,7 @@ class TestCheckSystemHealth:
         assert result["overall_status"] == "healthy"
         assert result["healthy_count"] == 1
 
-    @patch("ai_novels.utils.health_checker.get_health_service")
+    @patch("ai_novels.utils.health_checker._get_health_service")
     def test_unhealthy_system(self, mock_get_service):
         mock_service = MagicMock()
         mock_service.check_all.return_value = {

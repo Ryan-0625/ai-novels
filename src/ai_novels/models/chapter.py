@@ -8,7 +8,7 @@
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
-from sqlalchemy import Column, Text, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import SQLModel, Field, Relationship
 
@@ -49,8 +49,8 @@ class ChapterOutline(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     created_at: datetime = Field(
@@ -93,8 +93,8 @@ class ChapterContent(SQLModel, table=True):
 
     # [增量] 多租户字段
     tenant_id: Optional[str] = Field(
-        default=None, foreign_key="tenants.id", index=True,
-        sa_column=Column(String(64), nullable=True),
+        default=None,
+        sa_column=Column(String(64), ForeignKey("tenants.id"), nullable=True, index=True),
     )
 
     # JSONB 元数据

@@ -178,8 +178,9 @@ async def startup_event():
     # ================================================================
     try:
         from ai_novels.database.tenant_session import init_tenant_session_factory
-        dsn = config_hub.get("database.dsn",
-                             "postgresql+asyncpg://localhost/ai_novels")
+        dsn = config_hub.get("database.postgres.dsn",
+                             config_hub.get("database.dsn",
+                             "postgresql+asyncpg://ai_novels:ai_novels_pass@localhost:33432/ai_novels"))
         await init_tenant_session_factory(dsn)
         log_info(f"Tenant session factory initialized: {dsn}")
     except Exception as e:

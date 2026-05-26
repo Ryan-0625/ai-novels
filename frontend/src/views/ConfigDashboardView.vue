@@ -14,8 +14,11 @@ onMounted(() => {
 
 async function handleReload() {
   reloadLoading.value = true
-  await configStore.reloadConfig()
-  reloadLoading.value = false
+  try {
+    await configStore.reloadConfig()
+  } finally {
+    reloadLoading.value = false
+  }
 }
 
 function formatValue(v: any): string {
@@ -38,7 +41,7 @@ function formatValue(v: any): string {
       </div>
       <div class="header-actions">
         <el-button type="primary" :loading="reloadLoading" @click="handleReload">
-          <el-icon class="mr-1"><Refresh /></el-icon>
+          <el-icon :class="{ 'spin-anim': reloadLoading }" class="mr-1"><Refresh /></el-icon>
           热加载配置
         </el-button>
       </div>

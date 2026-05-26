@@ -1,0 +1,90 @@
+{
+  "outline_id": "outline_1_a164174b",
+  "task_id": "task_f126a3a0",
+  "chapter_num": 1,
+  "title": "[{\"chapter\": 1, \"title\": \"The Beginning\", \"events\": [\"Intro\"]}]",
+  "word_count_target": 3000,
+  "perspective": "third_person_limited",
+  "points_of_interest": [
+    "Key event in chapter 1"
+  ],
+  "foreshadowing": [
+    "Hint about future events in chapter 1"
+  ],
+  "structure": {
+    "acts": [
+      {
+        "number": 1,
+        "title": "开端",
+        "purpose": "世界观与角色引入，激励事件",
+        "chapter_range": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      {
+        "number": 2,
+        "title": "发展",
+        "purpose": "矛盾升级、障碍与转折",
+        "chapter_range": [
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37
+        ]
+      },
+      {
+        "number": 3,
+        "title": "高潮",
+        "purpose": "高潮与结局",
+        "chapter_range": [
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50
+        ]
+      }
+    ]
+  },
+  "created_at": "2026-05-25T06:33:37.877456"
+}

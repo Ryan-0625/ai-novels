@@ -190,6 +190,7 @@ class ContextManager:
         # 启动清理线程
         self._cleanup_thread: Optional[threading.Thread] = None
         self._stop_cleanup = False
+        self._cleanup_event = threading.Event()
         self._start_cleanup_thread()
         
         log_info(f"ContextManager initialized for {agent_name}, session: {self._session_id}")
@@ -198,7 +199,8 @@ class ContextManager:
         """启动清理线程"""
         def cleanup_loop():
             while not self._stop_cleanup:
-                time.sleep(self._cleanup_interval)
+                self._cleanup_event.wait(timeout=self._cleanup_interval)
+                self._cleanup_event.clear()
                 if not self._stop_cleanup:
                     self._cleanup_expired()
         
@@ -669,8 +671,9 @@ class ContextManager:
     def destroy(self):
         """销毁管理器"""
         self._stop_cleanup = True
+        self._cleanup_event.set()
         if self._cleanup_thread and self._cleanup_thread.is_alive():
-            self._cleanup_thread.join(timeout=5)
+            self._cleanup_thread.join(timeout=2)
         self.clear()
         log_info(f"ContextManager destroyed for {self._agent_name}")
 

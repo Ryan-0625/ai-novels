@@ -1,10 +1,10 @@
-# ============================================================
-# docker-compose.yml — DeepNovel 服务编排
-# 支持 Profile 分层启动:
-#   docker compose up -d                    # 仅基础设施
-#   docker compose --profile app up -d      # 基础设施 + 应用
-#   docker compose --profile dev up -d      # 含开发工具
-#   docker compose --profile monitoring up -d  # 含监控栈
+﻿# ============================================================
+# docker-compose.yml 閳?DeepNovel 閺堝秴濮熺紓鏍ㄥ笓
+# 閺€顖涘瘮 Profile 閸掑棗鐪伴崥顖氬З:
+#   docker compose up -d                    # 娴犲懎鐔€绾偓鐠佺偓鏌?
+#   docker compose --profile app up -d      # 閸╄櫣顢呯拋鐐煢 + 鎼存梻鏁?
+#   docker compose --profile dev up -d      # 閸氼偄绱戦崣鎴濅紣閸?
+#   docker compose --profile monitoring up -d  # 閸氼偆娲冮幒褎鐖?
 # ============================================================
 
 name: ai_novels
@@ -12,8 +12,6 @@ name: ai_novels
 x-common-security: &common-security
   security_opt:
     - no-new-privileges:true
-  cap_drop:
-    - ALL
 
 x-common-logging: &common-logging
   logging:
@@ -27,11 +25,13 @@ x-common-restart: &common-restart
   restart: unless-stopped
 
 services:
-  # ─────────────────────────────────────────────
-  # 应用层
-  # ─────────────────────────────────────────────
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  # 鎼存梻鏁ょ仦?
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
   ai-engine:
+    cap_drop:
+      - ALL
     build:
       context: .
       dockerfile: Dockerfile.ai
@@ -53,7 +53,7 @@ services:
     env_file:
       - config/.env
     ports:
-      - "8000:8000"
+      - "33100:8000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -74,9 +74,9 @@ services:
           cpus: '2.0'
           memory: 4G
 
-  # ─────────────────────────────────────────────
-  # 现有数据层 (Step1迁移前保留)
-  # ─────────────────────────────────────────────
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  # 閻滅増婀侀弫鐗堝祦鐏?(Step1鏉╀胶些閸撳秳绻氶悾?
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
   mysql:
     image: mysql:8.0.40
@@ -88,7 +88,7 @@ services:
       MYSQL_USER: ${MYSQL_USER:-ai_novels}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ai_novels_pass}
     ports:
-      - "3306:3306"
+      - "33306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./config/init/mysql_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -117,8 +117,8 @@ services:
       NEO4J_dbms_memory_heap_max__size: 2g
       NEO4J_dbms_default__listen__address: 0.0.0.0
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "33474:7474"
+      - "33687:7687"
     volumes:
       - neo4j_data:/data
     networks:
@@ -142,7 +142,7 @@ services:
     environment:
       MONGO_INITDB_DATABASE: ai_novels
     ports:
-      - "27017:27017"
+      - "33217:27017"
     volumes:
       - mongodb_data:/data/db
       - ./config/init/mongodb_init.js:/docker-entrypoint-initdb.d/init.js:ro
@@ -170,13 +170,13 @@ services:
       PERSIST_DIRECTORY: /chroma
       ALLOW_RESET: "true"
     ports:
-      - "8001:8000"
+      - "33801:8000"
     volumes:
       - chromadb_data:/chroma
     networks:
       - ai_novels
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "python", "-c", "import urllib.request as r, sys; sys.exit(0 if r.urlopen(\"http://localhost:8000/api/v1/heartbeat\").status == 200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -187,9 +187,9 @@ services:
           cpus: '1.0'
           memory: 2G
 
-  # ─────────────────────────────────────────────
-  # 新数据层 (Step1迁移目标)
-  # ─────────────────────────────────────────────
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  # 閺傜増鏆熼幑顔肩湴 (Step1鏉╀胶些閻╊喗鐖?
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
   postgres:
     image: postgres:16.4-alpine
@@ -201,7 +201,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-ai_novels_pass}
       POSTGRES_INITDB_ARGS: --encoding=UTF-8 --lc-collate=C --lc-ctype=C
     ports:
-      - "5432:5432"
+      - "33432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -229,7 +229,7 @@ services:
       --maxmemory-policy allkeys-lru
       --requirepass ${REDIS_PASSWORD:-ai_novels_redis}
     ports:
-      - "6379:6379"
+      - "33379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -251,14 +251,14 @@ services:
     container_name: ai-novels-qdrant
     <<: [*common-security, *common-logging, *common-restart]
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "33333:6333"
+      - "33334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
       - ai_novels
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/6333'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -269,9 +269,9 @@ services:
           cpus: '1.0'
           memory: 2G
 
-  # ─────────────────────────────────────────────
-  # 开发工具层 (profile: dev)
-  # ─────────────────────────────────────────────
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  # 瀵偓閸欐垵浼愰崗宄扮湴 (profile: dev)
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
   adminer:
     image: adminer:4.8.1
@@ -281,7 +281,7 @@ services:
       - dev
       - full
     ports:
-      - "8081:8080"
+      - "33081:8080"
     networks:
       - ai_novels
 
@@ -293,13 +293,13 @@ services:
       - dev
       - full
     ports:
-      - "5540:5540"
+      - "33540:5540"
     networks:
       - ai_novels
 
-  # ─────────────────────────────────────────────
-  # 监控层 (profile: monitoring)
-  # ─────────────────────────────────────────────
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+  # 閻╂垶甯剁仦?(profile: monitoring)
+  # 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -317,7 +317,7 @@ services:
       - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "33990:9090"
     networks:
       - ai_novels
 
@@ -335,13 +335,13 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "33301:3000"
     networks:
       - ai_novels
 
-# ─────────────────────────────────────────────
-# 网络与卷
-# ─────────────────────────────────────────────
+# 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
+# 缂冩垹绮舵稉搴″祹
+# 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 networks:
   ai_novels:

@@ -12,7 +12,6 @@ from typing import Dict, Any, Optional
 from functools import lru_cache
 
 from ..database import (
-    Neo4jClient, MongoDBClient, ChromaDBClient,
     get_neo4j_client, get_mongodb_client, get_chromadb_client
 )
 from ..config.manager import settings
@@ -30,6 +29,21 @@ class PersistenceManager:
 
     _instance: Optional['PersistenceManager'] = None
 
+    @staticmethod
+    def _get_neo4j(config=None):
+        from ..database import Neo4jClient
+        return self._get_neo4j(config=config) if config else None
+
+    @staticmethod
+    def _get_mongo(config=None):
+        from ..database import MongoDBClient
+        return self._get_mongo(config=config) if config else None
+
+    @staticmethod
+    def _get_chroma(config=None):
+        from ..database import ChromaDBClient
+        return self._get_chroma(config=config) if config else None
+
     def __init__(self, config: Dict[str, Any] = None):
         """
         初始化持久化管理器
@@ -40,9 +54,9 @@ class PersistenceManager:
         self._config = config or {}
 
         # 数据库客户端（延迟初始化）
-        self._neo4j_client: Optional[Neo4jClient] = None
-        self._mongodb_client: Optional[MongoDBClient] = None
-        self._chromadb_client: Optional[ChromaDBClient] = None
+        self._neo4j_client: "Optional[Neo4jClient]" = None
+        self._mongodb_client: "Optional[MongoDBClient]" = None
+        self._chromadb_client: "Optional[ChromaDBClient]" = None
 
         # 是否已初始化
         self._initialized = False
@@ -59,7 +73,7 @@ class PersistenceManager:
         return cls._instance
 
     @property
-    def neo4j_client(self) -> Optional[Neo4jClient]:
+    def neo4j_client(self) -> "Optional[Neo4jClient]":
         """获取Neo4j客户端"""
         if self._neo4j_client is None:
             try:
@@ -73,7 +87,7 @@ class PersistenceManager:
         return self._neo4j_client
 
     @property
-    def mongodb_client(self) -> Optional[MongoDBClient]:
+    def mongodb_client(self) -> "Optional[MongoDBClient]":
         """获取MongoDB客户端"""
         if self._mongodb_client is None:
             try:
@@ -87,7 +101,7 @@ class PersistenceManager:
         return self._mongodb_client
 
     @property
-    def chromadb_client(self) -> Optional[ChromaDBClient]:
+    def chromadb_client(self) -> "Optional[ChromaDBClient]":
         """获取ChromaDB客户端"""
         if self._chromadb_client is None:
             try:
@@ -220,10 +234,4 @@ def set_global_persistence_manager(pm: PersistenceManager) -> None:
 
 
 # 初始化时自动创建实例（如果配置可用）
-try:
-    default_config = settings.get_database("neo4j")
-    _global_pm = get_persistence_manager()
-    _global_pm.health_check()  # 尝试连接
-except Exception as e:
-    # 配置不可用时忽略错误
-    pass
+# Auto-connect disabled during import. Call get_global_persistence_manager() explicitly.

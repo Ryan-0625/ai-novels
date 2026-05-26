@@ -511,5 +511,6 @@ def init_memory_manager(working: WorkingMemoryBackend,
                         long: LongTermMemoryBackend) -> MemoryManager:
     global _memory_manager
     with _init_lock:
-        _memory_manager = MemoryManager(working, short, long)
+        if _memory_manager is None:
+            _memory_manager = MemoryManager(working, short, long)
     return _memory_manager

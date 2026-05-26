@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
@@ -374,7 +374,7 @@ watch(tailMode, () => {
         @current-change="loadLogs"
         @size-change="loadLogs"
         background
-        small
+        size="small"
       />
     </div>
   </div>

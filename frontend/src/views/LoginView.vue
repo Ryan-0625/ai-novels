@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, markRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { ElMessage } from 'element-plus'
+import { User, Lock, Message, MagicStick } from '@element-plus/icons-vue'
+
+// 显式绑定图标组件，确保模板可访问
+const UserIcon = markRaw(User)
+const LockIcon = markRaw(Lock)
+const MessageIcon = markRaw(Message)
 
 const router = useRouter()
 const route = useRoute()
@@ -72,7 +78,7 @@ async function handleRegister() {
             <el-input
               v-model="username"
               placeholder="用户名"
-              :prefix-icon="User"
+              :prefix-icon="UserIcon"
               size="large"
               class="login-input"
             />
@@ -80,7 +86,7 @@ async function handleRegister() {
               v-model="password"
               type="password"
               placeholder="密码"
-              :prefix-icon="Lock"
+              :prefix-icon="LockIcon"
               size="large"
               class="login-input"
               show-password
@@ -108,14 +114,14 @@ async function handleRegister() {
             <el-input
               v-model="username"
               placeholder="用户名"
-              :prefix-icon="User"
+              :prefix-icon="UserIcon"
               size="large"
               class="login-input"
             />
             <el-input
               v-model="email"
               placeholder="邮箱 (可选)"
-              :prefix-icon="Message"
+              :prefix-icon="MessageIcon"
               size="large"
               class="login-input"
             />
@@ -123,7 +129,7 @@ async function handleRegister() {
               v-model="password"
               type="password"
               placeholder="密码 (至少6位)"
-              :prefix-icon="Lock"
+              :prefix-icon="LockIcon"
               size="large"
               class="login-input"
               show-password

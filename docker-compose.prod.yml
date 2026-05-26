@@ -1,4 +1,5 @@
 version: "3.8"
+name: ai_novels
 
 # AI-Novels 生产环境编排 (Step 15)
 services:

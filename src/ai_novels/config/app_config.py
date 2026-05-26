@@ -24,7 +24,7 @@ class DatabaseConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DB_")
 
     url: str = Field(
-        default="postgresql+asyncpg://ai_novels:ai_novels_pass@localhost:5432/ai_novels",
+        default="postgresql+asyncpg://ai_novels:ai_novels_pass@localhost:33432/ai_novels",
         description="数据库连接URL",
     )
     pool_size: int = Field(default=10, ge=1, description="连接池大小")
@@ -40,7 +40,7 @@ class RedisConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="REDIS_")
 
     url: str = Field(
-        default="redis://localhost:6379/0",
+        default="redis://localhost:33379/0",
         description="Redis连接URL",
     )
     stream_key: str = Field(default="ai_novels:events", description="事件流键名")

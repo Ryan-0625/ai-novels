@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
 async def check():
     try:
-        engine = create_async_engine('postgresql+asyncpg://ai_novels:ai_novels_pass@localhost:5432/ai_novels')
+        engine = create_async_engine('postgresql+asyncpg://ai_novels:ai_novels_pass@localhost:33432/ai_novels')
         async with engine.connect() as c:
             await c.execute(text('SELECT 1'))
         print('[OK] PostgreSQL connected')
@@ -42,9 +42,9 @@ echo "[OK] Migration complete"
 
 # Step 4: Start
 echo "[4/4] Starting server..."
-echo "  API:  http://localhost:8004"
-echo "  Docs: http://localhost:8004/docs"
+echo "  API:  http://localhost:33100"
+echo "  Docs: http://localhost:33100/docs"
 echo "  Press Ctrl+C to stop"
 echo "================================"
 
-uvicorn src.ai_novels.api.main:app --host 0.0.0.0 --port 28004 --reload
+uvicorn src.ai_novels.api.main:app --host 0.0.0.0 --port 33100 --reload

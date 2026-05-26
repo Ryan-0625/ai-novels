@@ -220,12 +220,12 @@ watch(
 // ── 表单验证规则 ──────────────────────────────────────────
 const rules = {
   title: [
-    { required: true, message: '请输入小说标题', trigger: 'change' },
-    { min: 2, max: 50, message: '标题长度在2到50个字符之间', trigger: 'change' },
+    { required: true, message: '请输入小说标题', trigger: 'blur' },
+    { min: 2, max: 50, message: '标题长度在2到50个字符之间', trigger: 'blur' },
   ],
   description: [
-    { required: true, message: '请输入小说描述', trigger: 'change' },
-    { min: 10, message: '描述至少10个字符', trigger: 'change' },
+    { required: true, message: '请输入小说描述', trigger: 'blur' },
+    { min: 10, message: '描述至少10个字符', trigger: 'blur' },
   ],
 }
 

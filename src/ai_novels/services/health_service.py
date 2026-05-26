@@ -136,6 +136,24 @@ class HealthService:
             last_check=0
         )
 
+        # 消息队列组件
+        self._components["rocketmq_producer"] = ComponentHealth(
+            name="rocketmq_producer",
+            component_type=ComponentType.MESSAGE_QUEUE,
+            status=HealthStatus.UNHEALTHY,
+            latency_ms=0,
+            details={},
+            last_check=0
+        )
+        self._components["rocketmq_consumer"] = ComponentHealth(
+            name="rocketmq_consumer",
+            component_type=ComponentType.MESSAGE_QUEUE,
+            status=HealthStatus.UNHEALTHY,
+            latency_ms=0,
+            details={},
+            last_check=0
+        )
+
     def _get_mysql_client(self) -> MySQLClient:
         """获取MySQL客户端"""
         if "mysql" not in self._clients:
@@ -178,7 +196,7 @@ class HealthService:
                 from ai_novels.config.manager import settings
                 msg_config = settings.get("messaging", {})
                 rocketmq_config = msg_config.get("rocketmq", {})
-                name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:19876"))
+                name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:33976"))
 
                 config = RocketMQConfig(
                     name_server=name_server,
@@ -198,7 +216,7 @@ class HealthService:
                 from ai_novels.config.manager import settings
                 msg_config = settings.get("messaging", {})
                 rocketmq_config = msg_config.get("rocketmq", {})
-                name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:19876"))
+                name_server = rocketmq_config.get("name_server", os.environ.get("ROCKETMQ_NS", "localhost:33976"))
 
                 config = ConsumerConfig(
                     name_server=name_server,
@@ -489,6 +507,8 @@ class HealthService:
             "neo4j": self._check_neo4j,
             "mongodb": self._check_mongodb,
             "chromadb": self._check_chromadb,
+            "rocketmq_producer": self._check_rocketmq_producer,
+            "rocketmq_consumer": self._check_rocketmq_consumer,
             "ollama": self._check_ollama,
         }
 

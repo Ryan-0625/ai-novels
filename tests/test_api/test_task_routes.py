@@ -22,6 +22,25 @@ def mock_orchestrator():
     """创建 Mock TaskOrchestrator"""
     orch = MagicMock()
     orch.cancel = AsyncMock(return_value=True)
+    orch.pause = AsyncMock(return_value=True)
+    orch.resume = AsyncMock(return_value=True)
+    orch.list_tasks = MagicMock(return_value=[
+        {
+            "task_id": "task-1",
+            "agent_name": "agent_1",
+            "status": "running",
+            "priority": "NORMAL",
+            "enqueue_time": "2024-01-01T00:00:00",
+        },
+        {
+            "task_id": "task-2",
+            "agent_name": "agent_2",
+            "status": "pending",
+            "priority": "NORMAL",
+            "enqueue_time": "2024-01-01T00:00:00",
+        },
+    ])
+    orch.list_workers = MagicMock(return_value=[])
     orch.get_stats.return_value = {
         "workers": {
             "agent_1": {"current_task": "task-1", "idle": False},
@@ -112,7 +131,7 @@ class TestTaskAction:
     """POST /api/v2/tasks/{task_id}/action 测试"""
 
     def test_pause_action(self, client):
-        """暂停操作返回不支持提示"""
+        """暂停操作"""
         response = client.post(
             "/api/v2/tasks/task-1/action",
             json={"action": "pause"},
@@ -120,11 +139,11 @@ class TestTaskAction:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is False
-        assert "not yet supported" in data["message"]
+        assert data["success"] is True
+        assert data["action"] == "pause"
 
     def test_resume_action(self, client):
-        """恢复操作返回不支持提示"""
+        """恢复操作"""
         response = client.post(
             "/api/v2/tasks/task-1/action",
             json={"action": "resume"},
@@ -132,6 +151,7 @@ class TestTaskAction:
 
         assert response.status_code == 200
         data = response.json()
+        assert data["success"] is True
         assert data["action"] == "resume"
 
     def test_cancel_action(self, client):

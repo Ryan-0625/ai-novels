@@ -99,7 +99,27 @@ class CircuitBreaker:
             raise
 
     async def call_async(self, func: Callable, *args, **kwargs) -> Any:
-        return self.call(func, *args, **kwargs)
+        """调用异步函数 (受熔断保护)"""
+        if self._open:
+            elapsed = time.time() - self._last_failure_time
+            if elapsed >= self._recovery_timeout:
+                self._open = False
+                self._failure_count = 0
+            else:
+                raise CircuitBreakerOpen("circuit", self._recovery_timeout - elapsed)
+
+        try:
+            result = func(*args, **kwargs)
+            if asyncio.iscoroutine(result):
+                result = await result
+            self._failure_count = 0
+            return result
+        except Exception:
+            self._failure_count += 1
+            self._last_failure_time = time.time()
+            if self._failure_count >= self._failure_threshold:
+                self._open = True
+            raise
 
     @property
     def is_open(self) -> bool:
@@ -159,11 +179,20 @@ class PipelineNode:
             if self.pre_hook:
                 await self._safe_hook(self.pre_hook, message, ctx)
 
-            # 核心调用 (硬超时)
+            # 核心调用 (硬超时 — 支持同步/异步 agent)
             async def _invoke() -> Message:
                 if hasattr(self.agent, "process_with_context"):
-                    return await self.agent.process_with_context(message, ctx)  # type: ignore
-                return await self.agent.process(message)
+                    proc = self.agent.process_with_context  # type: ignore
+                    args = (message, ctx)
+                else:
+                    proc = self.agent.process
+                    args = (message,)
+
+                if asyncio.iscoroutinefunction(proc):
+                    return await proc(*args)
+
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, proc, *args)
 
             result = await asyncio.wait_for(
                 _invoke(),
@@ -223,7 +252,7 @@ class PipelineNode:
 # 流水线执行日志条目
 # ──────────────────────────────
 
-@dataclass
+@dataclass(frozen=True)
 class PipelineLogEntry:
     node_name: str
     status: str  # success | failed | skipped

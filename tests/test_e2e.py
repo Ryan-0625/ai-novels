@@ -181,7 +181,7 @@ class TestAgentExecutionE2E:
             msg = Message(
                 id="e2e-1",
                 type=MessageType.TEXT,
-                content='{"title": "Test", "genre": "fantasy", "chapters": 1}',
+                content='plan {"title": "Test", "genre": "fantasy", "chapters": 1}',
             )
             result = agent.process(msg)
 
@@ -201,12 +201,12 @@ class TestAgentExecutionE2E:
             msg = Message(
                 id="e2e-2",
                 type=MessageType.TEXT,
-                content='{"title": "Test", "genre": "fantasy"}',
+                content='plan outline {"title": "Test", "genre": "fantasy"}',
             )
             result = agent.process(msg)
 
         assert result is not None
-        assert "角色" in result.content or "Character" in result.content
+        assert "角色" in result.content or "characters" in result.content
 
     def test_content_generator_command_processing(self):
         """ContentGeneratorAgent 命令处理链路"""

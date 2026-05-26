@@ -5,6 +5,7 @@
 @date: 2026-05-24
 """
 
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,24 +21,27 @@ from ai_novels.models.tenant import Tenant
 router = APIRouter(prefix="/api/v2/auth", tags=["auth"])
 
 
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=2)
+    email: str = ""
+    password: str = Field(default="", min_length=0)
+    tenant_id: str = "default"
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(...)
+    password: str = Field(...)
+    tenant_id: str = "default"
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(
-    username: str,
-    email: str = "",
-    password: str = "",
-    tenant_id: str = "default",
-):
-    """用户注册
+async def register(req: RegisterRequest):
+    """用户注册"""
+    username = req.username
+    password = req.password
+    email = req.email
+    tenant_id = req.tenant_id
 
-    Args:
-        username: 用户名 (唯一, 按租户隔离)
-        email: 邮箱 (可选)
-        password: 密码 (至少 6 位)
-        tenant_id: 租户 ID, 默认注册到 "default" 租户
-
-    Returns:
-        {"access_token": str, "token_type": "bearer", "user": {...}}
-    """
     if not username or len(username) < 2:
         raise HTTPException(status_code=422, detail="Username too short")
 
@@ -112,17 +116,11 @@ async def register(
 
 
 @router.post("/login")
-async def login(username: str, password: str, tenant_id: str = "default"):
-    """用户登录
-
-    Args:
-        username: 用户名
-        password: 密码
-        tenant_id: 租户 ID, 默认 "default"
-
-    Returns:
-        {"access_token": str, "token_type": "bearer", "user": {...}, "tenant": {...}}
-    """
+async def login(req: LoginRequest):
+    """用户登录"""
+    username = req.username
+    password = req.password
+    tenant_id = req.tenant_id
     if not username or not password:
         raise HTTPException(status_code=422, detail="Username and password required")
 
